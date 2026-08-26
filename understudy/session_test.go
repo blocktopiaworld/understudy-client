@@ -10,6 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/blocktopia/understudy-client/internal/entities"
+	"github.com/blocktopia/understudy-client/internal/inventory"
+	"github.com/blocktopia/understudy-client/internal/world"
 	"github.com/blocktopia/understudy-client/protocol"
 )
 
@@ -47,9 +50,9 @@ func newSession(t *testing.T) (*Client, *fakeServer) {
 		v:        testVersion(t),
 		log:      discard,
 		uuid:     protocol.OfflineUUID("TestBot"),
-		entities: newEntityTracker(),
-		world:    newWorld(),
-		inv:      newInventory(),
+		entities: entities.New(),
+		world:    world.New(),
+		inv:      inventory.New(),
 		conn:     protocol.NewConn(clientSide),
 		state:    protocol.StatePlay,
 	}
@@ -369,8 +372,8 @@ func TestDeathCanBeLeftUnanswered(t *testing.T) {
 // survive that.
 func TestRespawnClearsEntitiesAndTerrain(t *testing.T) {
 	c, s := newSession(t)
-	c.entities.spawn(&Entity{ID: 1, TypeName: "minecraft:pig"})
-	c.world.store(emptyColumn(0, 0))
+	c.entities.Spawn(&Entity{ID: 1, TypeName: "minecraft:pig"})
+	c.world.Store(emptyColumn(0, 0))
 	run(t, c)
 
 	if err := s.conn.WritePacket(
@@ -378,7 +381,7 @@ func TestRespawnClearsEntitiesAndTerrain(t *testing.T) {
 		t.Fatalf("WritePacket: %v", err)
 	}
 	waitFor(t, 2*time.Second, "the world to be cleared", func() bool {
-		return c.LoadedChunks() == 0 && len(c.entities.all()) == 0
+		return c.LoadedChunks() == 0 && len(c.entities.All()) == 0
 	})
 	if c.Dead() {
 		t.Error("Dead() = true after respawning, want false")

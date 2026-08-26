@@ -1,100 +1,17 @@
 package understudy
 
 import (
-	"sync"
 	"testing"
 
 	"github.com/blocktopia/understudy-client/protocol"
 )
 
-func TestEntityTrackerLifecycle(t *testing.T) {
-	tr := newEntityTracker()
-	tr.spawn(&Entity{ID: 1, TypeName: "minecraft:pig", X: 1, Y: 2, Z: 3})
-	tr.spawn(&Entity{ID: 2, TypeName: "minecraft:zombie"})
-
-	if got := len(tr.all()); got != 2 {
-		t.Fatalf("all() = %d entities, want 2", got)
-	}
-
-	tr.moveRelative(1, 0.5, 0.5, 0.5)
-	tr.teleport(2, 10, 20, 30)
-
-	byID := map[int32]Entity{}
-	for _, e := range tr.all() {
-		byID[e.ID] = e
-	}
-	if e := byID[1]; e.X != 1.5 || e.Y != 2.5 || e.Z != 3.5 {
-		t.Errorf("entity 1 after moveRelative = (%g,%g,%g), want (1.5,2.5,3.5)", e.X, e.Y, e.Z)
-	}
-	if e := byID[2]; e.X != 10 || e.Y != 20 || e.Z != 30 {
-		t.Errorf("entity 2 after teleport = (%g,%g,%g), want (10,20,30)", e.X, e.Y, e.Z)
-	}
-
-	tr.remove([]int32{1})
-	if got := len(tr.all()); got != 1 {
-		t.Errorf("all() after remove = %d, want 1", got)
-	}
-	tr.reset()
-	if got := len(tr.all()); got != 0 {
-		t.Errorf("all() after reset = %d, want 0", got)
-	}
-}
-
-// Without a spawn packet there is no type, and a typeless entity cannot be
-// selected for anything useful.
-func TestEntityTrackerIgnoresUnknownIDs(t *testing.T) {
-	tr := newEntityTracker()
-	tr.moveRelative(99, 1, 1, 1)
-	tr.teleport(99, 1, 1, 1)
-	if got := len(tr.all()); got != 0 {
-		t.Errorf("all() = %d after updating an unspawned entity, want 0", got)
-	}
-}
-
-// The tracker keeps mutating the originals as movement packets arrive, so a
-// shared pointer would let a caller's snapshot change under it.
-func TestEntityTrackerSnapshotIsACopy(t *testing.T) {
-	tr := newEntityTracker()
-	tr.spawn(&Entity{ID: 1, X: 0})
-
-	snapshot := tr.all()
-	tr.teleport(1, 100, 0, 0)
-
-	if snapshot[0].X != 0 {
-		t.Errorf("snapshot changed to X=%g after a later teleport; all() must copy", snapshot[0].X)
-	}
-}
-
-func TestEntityTrackerMatching(t *testing.T) {
-	tr := newEntityTracker()
-	tr.spawn(&Entity{ID: 1, TypeName: "minecraft:pig"})
-	tr.spawn(&Entity{ID: 2, TypeName: "minecraft:zombie"})
-	tr.spawn(&Entity{ID: 3, TypeName: "minecraft:pig"})
-
-	for _, tc := range []struct {
-		name  string
-		query string
-		want  int
-	}{
-		{"bare name", "pig", 2},
-		{"namespaced name", "minecraft:pig", 2},
-		{"empty matches everything", "", 3},
-		{"no matches", "creeper", 0},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := len(tr.matching(tc.query)); got != tc.want {
-				t.Errorf("matching(%q) = %d entities, want %d", tc.query, got, tc.want)
-			}
-		})
-	}
-}
-
 func TestEntitiesAreSortedNearestFirst(t *testing.T) {
 	c := newTestClient(t)
 	setPosition(c, 0, 0, 0)
-	c.entities.spawn(&Entity{ID: 1, TypeName: "minecraft:pig", X: 10})
-	c.entities.spawn(&Entity{ID: 2, TypeName: "minecraft:pig", X: 2})
-	c.entities.spawn(&Entity{ID: 3, TypeName: "minecraft:pig", X: 5})
+	c.entities.Spawn(&Entity{ID: 1, TypeName: "minecraft:pig", X: 10})
+	c.entities.Spawn(&Entity{ID: 2, TypeName: "minecraft:pig", X: 2})
+	c.entities.Spawn(&Entity{ID: 3, TypeName: "minecraft:pig", X: 5})
 
 	got := c.Entities()
 	for i, id := range []int32{2, 3, 1} {
@@ -107,9 +24,9 @@ func TestEntitiesAreSortedNearestFirst(t *testing.T) {
 func TestNearestEntity(t *testing.T) {
 	c := newTestClient(t)
 	setPosition(c, 0, 0, 0)
-	c.entities.spawn(&Entity{ID: 1, TypeName: "minecraft:pig", X: 10})
-	c.entities.spawn(&Entity{ID: 2, TypeName: "minecraft:zombie", X: 3})
-	c.entities.spawn(&Entity{ID: 3, TypeName: "minecraft:pig", X: 4})
+	c.entities.Spawn(&Entity{ID: 1, TypeName: "minecraft:pig", X: 10})
+	c.entities.Spawn(&Entity{ID: 2, TypeName: "minecraft:zombie", X: 3})
+	c.entities.Spawn(&Entity{ID: 3, TypeName: "minecraft:pig", X: 4})
 
 	got, err := c.NearestEntity("pig")
 	if err != nil {
@@ -141,7 +58,7 @@ func TestDistanceTo(t *testing.T) {
 func TestAttackNearestRefusesOutOfReach(t *testing.T) {
 	c := newTestClient(t)
 	setPosition(c, 0, 0, 0)
-	c.entities.spawn(&Entity{ID: 1, TypeName: "minecraft:zombie", X: AttackReach + 1})
+	c.entities.Spawn(&Entity{ID: 1, TypeName: "minecraft:zombie", X: AttackReach + 1})
 
 	_, err := c.AttackNearest("zombie")
 	wantErrContaining(t, err, "AttackNearest on an out-of-reach target",
@@ -153,7 +70,7 @@ func TestAttackNearestRefusesOutOfReach(t *testing.T) {
 func TestPlayerEntityResolvesByDerivedUUID(t *testing.T) {
 	c := newTestClient(t)
 	const name = "SomePlayer"
-	c.entities.spawn(&Entity{ID: 7, TypeName: "minecraft:player", UUID: protocol.OfflineUUID(name)})
+	c.entities.Spawn(&Entity{ID: 7, TypeName: "minecraft:player", UUID: protocol.OfflineUUID(name)})
 
 	got, err := c.PlayerEntity(name)
 	if err != nil {
@@ -165,33 +82,6 @@ func TestPlayerEntityResolvesByDerivedUUID(t *testing.T) {
 	if _, err := c.PlayerEntity("SomeoneElse"); err == nil {
 		t.Error("PlayerEntity of an absent player = nil error, want an error")
 	}
-}
-
-func TestEntityTrackerIsSafeForConcurrentUse(t *testing.T) {
-	tr := newEntityTracker()
-	var wg sync.WaitGroup
-	for g := range 4 {
-		wg.Add(3)
-		go func() {
-			defer wg.Done()
-			for i := range 200 {
-				tr.spawn(&Entity{ID: int32(g*1000 + i), TypeName: "minecraft:pig"})
-			}
-		}()
-		go func() {
-			defer wg.Done()
-			for i := range 200 {
-				tr.moveRelative(int32(g*1000+i), 1, 1, 1)
-			}
-		}()
-		go func() {
-			defer wg.Done()
-			for range 200 {
-				_ = tr.matching("pig")
-			}
-		}()
-	}
-	wg.Wait()
 }
 
 // --- packet decoding ---------------------------------------------------------
@@ -207,7 +97,7 @@ func TestHandleEntityPacketSpawn(t *testing.T) {
 	if !handled || err != nil {
 		t.Fatalf("handleEntityPacket = %v, %v; want true, nil", handled, err)
 	}
-	list := c.entities.all()
+	list := c.entities.All()
 	if len(list) != 1 {
 		t.Fatalf("tracked %d entities, want 1", len(list))
 	}
@@ -224,7 +114,7 @@ func TestHandleEntityPacketSpawn(t *testing.T) {
 // blocks puts entities thousands of blocks away.
 func TestHandleEntityPacketRelativeMoveScaling(t *testing.T) {
 	c := newTestClient(t)
-	c.entities.spawn(&Entity{ID: 1})
+	c.entities.Spawn(&Entity{ID: 1})
 
 	p := packet(c.v.Packets.CBPlayRelEntityMove, func(w *protocol.Writer) {
 		w.VarInt(1).I16(4096).I16(-4096).I16(2048)
@@ -232,7 +122,7 @@ func TestHandleEntityPacketRelativeMoveScaling(t *testing.T) {
 	if _, err := c.handleEntityPacket(p); err != nil {
 		t.Fatalf("handleEntityPacket: %v", err)
 	}
-	e := c.entities.all()[0]
+	e := c.entities.All()[0]
 	if !closeEnough(e.X, 1, 1e-9) || !closeEnough(e.Y, -1, 1e-9) || !closeEnough(e.Z, 0.5, 1e-9) {
 		t.Errorf("after a relative move = (%g,%g,%g), want (1,-1,0.5)", e.X, e.Y, e.Z)
 	}
@@ -241,7 +131,7 @@ func TestHandleEntityPacketRelativeMoveScaling(t *testing.T) {
 func TestHandleEntityPacketDestroy(t *testing.T) {
 	c := newTestClient(t)
 	for _, id := range []int32{1, 2, 3} {
-		c.entities.spawn(&Entity{ID: id})
+		c.entities.Spawn(&Entity{ID: id})
 	}
 	p := packet(c.v.Packets.CBPlayEntityDestroy, func(w *protocol.Writer) {
 		w.VarInt(2).VarInt(1).VarInt(3)
@@ -249,7 +139,7 @@ func TestHandleEntityPacketDestroy(t *testing.T) {
 	if _, err := c.handleEntityPacket(p); err != nil {
 		t.Fatalf("handleEntityPacket: %v", err)
 	}
-	list := c.entities.all()
+	list := c.entities.All()
 	if len(list) != 1 || list[0].ID != 2 {
 		t.Errorf("after destroy, tracked %v, want just entity 2", ids(list))
 	}

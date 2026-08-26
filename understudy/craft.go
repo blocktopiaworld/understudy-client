@@ -43,26 +43,6 @@ func (c *Client) CraftIn2x2(ctx context.Context, layout map[int]string) (ItemSta
 	return c.craftUsingGrid(ctx, layout)
 }
 
-// findInStorage locates an item in the storage slots only.
-//
-// Deliberately not FindItem: that searches every tracked slot, including the
-// crafting grid itself. Mid-craft that means the "ingredient" it finds can be
-// the one just placed into the grid, so the loop picks its own work back up
-// and only ever assembles a single-item recipe. That produced an oak_button
-// from four planks — a valid recipe, just not the intended one.
-//
-// The matching rules are FindItem's, applied to a filtered view, so the two
-// cannot drift apart.
-func (c *Client) findInStorage(name string) (ItemStack, bool) {
-	storage := make([]ItemStack, 0, StorageSlots)
-	for _, it := range c.Inventory() {
-		if it.isStorage() {
-			storage = append(storage, it)
-		}
-	}
-	return findItem(storage, name)
-}
-
 // craftUsingGrid performs the click sequence common to any crafting grid.
 func (c *Client) craftUsingGrid(ctx context.Context, layout map[int]string) (ItemStack, error) {
 	pause := func() error { return wait(ctx, clickDelay) }
@@ -86,7 +66,7 @@ func (c *Client) craftUsingGrid(ctx context.Context, layout map[int]string) (Ite
 
 	for _, gridSlot := range slots {
 		itemName := layout[gridSlot]
-		src, ok := c.findInStorage(itemName)
+		src, ok := c.inv.FindInStorage(itemName)
 		if !ok {
 			return ItemStack{}, fmt.Errorf("understudy: no %q in inventory to craft with", itemName)
 		}

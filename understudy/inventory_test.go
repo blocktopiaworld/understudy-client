@@ -10,145 +10,6 @@ func stack(slot int, name string, count int32) ItemStack {
 	return ItemStack{Slot: slot, Name: protocol.Namespaced(name), Count: count}
 }
 
-func TestInventorySortedBySlot(t *testing.T) {
-	inv := newInventory()
-	for _, s := range []int{40, 9, 36, 0, 45} {
-		inv.setSlot(s, stack(s, "dirt", 1))
-	}
-	got := inv.sorted()
-	want := []int{0, 9, 36, 40, 45}
-	if len(got) != len(want) {
-		t.Fatalf("sorted() returned %d slots, want %d", len(got), len(want))
-	}
-	for i, slot := range want {
-		if got[i].Slot != slot {
-			t.Errorf("sorted()[%d].Slot = %d, want %d", i, got[i].Slot, slot)
-		}
-	}
-}
-
-func TestInventoryEmptySlotDeletes(t *testing.T) {
-	inv := newInventory()
-	inv.setSlot(9, stack(9, "dirt", 5))
-	if _, ok := inv.slot(9); !ok {
-		t.Fatal("slot 9 missing after setSlot")
-	}
-	// A zero count means the slot is now empty; it must be removed rather than
-	// linger as a phantom stack.
-	inv.setSlot(9, ItemStack{Slot: 9})
-	if _, ok := inv.slot(9); ok {
-		t.Error("slot 9 still present after being set empty")
-	}
-}
-
-func TestInventoryReplaceAll(t *testing.T) {
-	inv := newInventory()
-	inv.setSlot(1, stack(1, "dirt", 1))
-	inv.replaceAll([]ItemStack{stack(9, "oak_log", 3)}, true)
-
-	if _, ok := inv.slot(1); ok {
-		t.Error("slot 1 survived replaceAll, want the whole window replaced")
-	}
-	if it, ok := inv.slot(9); !ok || it.Count != 3 {
-		t.Errorf("slot 9 = %+v, %v; want oak_log x3", it, ok)
-	}
-	if !inv.isTruncated() {
-		t.Error("isTruncated() = false after a truncated snapshot")
-	}
-}
-
-// The fuzzy suffix match is a convenience, but it must not shadow an exact
-// one: "oak_planks" also suffix-matches "dark_oak_planks", and picking that
-// crafts the wrong recipe.
-func TestFindItemPrefersExactMatch(t *testing.T) {
-	items := []ItemStack{
-		stack(9, "dark_oak_planks", 10),
-		stack(20, "oak_planks", 5),
-	}
-	got, ok := findItem(items, "oak_planks")
-	if !ok {
-		t.Fatal("findItem(oak_planks) found nothing")
-	}
-	if got.Slot != 20 {
-		t.Errorf("findItem(oak_planks) = slot %d (%s), want slot 20 (the exact match)",
-			got.Slot, got.Name)
-	}
-}
-
-func TestFindItem(t *testing.T) {
-	items := []ItemStack{
-		stack(9, "diamond_pickaxe", 1),
-		stack(12, "dirt", 64),
-		stack(36, "dirt", 32),
-	}
-	for _, tc := range []struct {
-		name     string
-		query    string
-		wantSlot int
-		wantOK   bool
-	}{
-		{"exact bare name", "dirt", 12, true},
-		{"exact namespaced name", "minecraft:dirt", 12, true},
-		{"fuzzy suffix", "pickaxe", 9, true},
-		{"lowest slot wins among equals", "dirt", 12, true},
-		{"not present", "emerald", 0, false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			got, ok := findItem(items, tc.query)
-			if ok != tc.wantOK {
-				t.Fatalf("findItem(%q) found = %v, want %v", tc.query, ok, tc.wantOK)
-			}
-			if ok && got.Slot != tc.wantSlot {
-				t.Errorf("findItem(%q) = slot %d, want %d", tc.query, got.Slot, tc.wantSlot)
-			}
-		})
-	}
-}
-
-// Server implementations disagree about what "the inventory" means: 36 storage
-// slots, or the whole container including armour and the offhand. Reporting
-// both numbers is what lets a caller detect that divergence.
-func TestCountItemVersusStorage(t *testing.T) {
-	c := newTestClient(t)
-	c.inv.setSlot(9, stack(9, "dirt", 10))  // main inventory
-	c.inv.setSlot(36, stack(36, "dirt", 5)) // hotbar
-	c.inv.setSlot(SlotOffhand, stack(SlotOffhand, "dirt", 3))
-	c.inv.setSlot(SlotArmorHead, stack(SlotArmorHead, "dirt", 1))
-
-	if got := c.CountItem("dirt"); got != 19 {
-		t.Errorf("CountItem(dirt) = %d, want 19 (everything)", got)
-	}
-	if got := c.CountItemStorage("dirt"); got != 15 {
-		t.Errorf("CountItemStorage(dirt) = %d, want 15 (the 36 storage slots only)", got)
-	}
-}
-
-// Counting is exact-match only: a fuzzy total would silently add
-// dark_oak_planks to an oak_planks count.
-func TestCountItemDoesNotMatchFuzzily(t *testing.T) {
-	c := newTestClient(t)
-	c.inv.setSlot(9, stack(9, "oak_planks", 4))
-	c.inv.setSlot(10, stack(10, "dark_oak_planks", 4))
-
-	if got := c.CountItem("oak_planks"); got != 4 {
-		t.Errorf("CountItem(oak_planks) = %d, want 4 — dark_oak_planks must not be counted", got)
-	}
-}
-
-func TestFreeStorageSlots(t *testing.T) {
-	c := newTestClient(t)
-	if got := c.FreeStorageSlots(); got != StorageSlots {
-		t.Errorf("FreeStorageSlots() on an empty inventory = %d, want %d", got, StorageSlots)
-	}
-	c.inv.setSlot(9, stack(9, "dirt", 1))
-	c.inv.setSlot(36, stack(36, "dirt", 1))
-	// Armour and the offhand are outside the 36 and must not count.
-	c.inv.setSlot(SlotOffhand, stack(SlotOffhand, "dirt", 1))
-	if got := c.FreeStorageSlots(); got != StorageSlots-2 {
-		t.Errorf("FreeStorageSlots() = %d, want %d", got, StorageSlots-2)
-	}
-}
-
 // Totems stack to 1, so "hold 5 totems" needs five whole slots, while
 // "hold 2304 dirt" needs exactly 36 — every storage slot a player has.
 func TestSlotsNeeded(t *testing.T) {
@@ -180,7 +41,7 @@ func TestSlotsNeeded(t *testing.T) {
 
 func TestHeldItemTracksTheSelectedSlot(t *testing.T) {
 	c := newTestClient(t)
-	c.inv.setSlot(SlotHotbarStart+3, stack(SlotHotbarStart+3, "diamond_pickaxe", 1))
+	c.inv.SetSlot(SlotHotbarStart+3, stack(SlotHotbarStart+3, "diamond_pickaxe", 1))
 
 	if _, ok := c.HeldItem(); ok {
 		t.Error("HeldItem() found something in slot 0, want nothing")
@@ -208,8 +69,8 @@ func TestPickupTally(t *testing.T) {
 		t.Errorf("a fresh client has picked up %d items, want 0", total)
 	}
 
-	c.inv.recordPickup(pickupItemKey, 3)
-	c.inv.recordPickup(pickupItemKey, 2)
+	c.inv.RecordPickup(pickupItemKey, 3)
+	c.inv.RecordPickup(pickupItemKey, 2)
 	total, byItem = c.PickupsSeen()
 	if total != 5 || byItem[pickupItemKey] != 5 {
 		t.Errorf("PickupsSeen() = %d, %v; want 5", total, byItem)
@@ -295,7 +156,7 @@ func TestHandleWindowItems(t *testing.T) {
 	if !handled || err != nil {
 		t.Fatalf("handleInventoryPacket = %v, %v", handled, err)
 	}
-	if got := c.inv.getStateID(); got != 7 {
+	if got := c.inv.StateID(); got != 7 {
 		t.Errorf("state id = %d, want 7", got)
 	}
 	if it, ok := c.SlotAt(1); !ok || it.Count != 2 || it.Name != "minecraft:dirt" {
@@ -331,7 +192,7 @@ func TestHandleWindowItemsTruncates(t *testing.T) {
 
 func TestHandleWindowItemsIgnoresOtherWindows(t *testing.T) {
 	c := newTestClient(t)
-	c.inv.setSlot(9, stack(9, "dirt", 1))
+	c.inv.SetSlot(9, stack(9, "dirt", 1))
 	p := packet(c.v.Packets.CBPlayWindowItems, func(w *protocol.Writer) {
 		w.VarInt(3).VarInt(1).VarInt(0) // a chest, not the player window
 	})

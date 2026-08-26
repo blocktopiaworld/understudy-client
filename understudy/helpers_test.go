@@ -7,6 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/blocktopia/understudy-client/internal/entities"
+	"github.com/blocktopia/understudy-client/internal/inventory"
+	"github.com/blocktopia/understudy-client/internal/world"
 	"github.com/blocktopia/understudy-client/protocol"
 )
 
@@ -80,9 +83,9 @@ func newTestClient(t *testing.T) *Client {
 		v:        testVersion(t),
 		log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 		uuid:     protocol.OfflineUUID("TestBot"),
-		entities: newEntityTracker(),
-		world:    newWorld(),
-		inv:      newInventory(),
+		entities: entities.New(),
+		world:    world.New(),
+		inv:      inventory.New(),
 		state:    protocol.StatePlay,
 	}
 }
@@ -101,7 +104,7 @@ func emptyColumn(chunkX, chunkZ int32) *protocol.ChunkColumn {
 func loadChunk(t *testing.T, c *Client, chunkX, chunkZ int32) *protocol.ChunkColumn {
 	t.Helper()
 	col := emptyColumn(chunkX, chunkZ)
-	c.world.store(col)
+	c.world.Store(col)
 	return col
 }
 

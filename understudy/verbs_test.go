@@ -220,11 +220,11 @@ func TestStartAndFinishDigSendTheRightStatuses(t *testing.T) {
 func TestAwaitBreakReturnsAsSoonAsTheBlockGoes(t *testing.T) {
 	c, _ := settled(t)
 	loadChunk(t, c, 0, 0)
-	c.world.setBlockState(1, 2, 3, stateStone)
+	c.world.SetBlockState(1, 2, 3, stateStone)
 
 	go func() {
 		time.Sleep(40 * time.Millisecond)
-		c.world.setBlockState(1, 2, 3, stateAir)
+		c.world.SetBlockState(1, 2, 3, stateAir)
 	}()
 
 	start := time.Now()
@@ -241,7 +241,7 @@ func TestAwaitBreakReturnsAsSoonAsTheBlockGoes(t *testing.T) {
 func TestAwaitBreakReportsABlockThatNeverBreaks(t *testing.T) {
 	c, _ := settled(t)
 	loadChunk(t, c, 0, 0)
-	c.world.setBlockState(1, 2, 3, stateStone)
+	c.world.SetBlockState(1, 2, 3, stateStone)
 
 	err := c.awaitBreak(context.Background(), 1, 2, 3, protocol.FaceTop, 10*time.Millisecond)
 	wantErrContaining(t, err, "awaitBreak on an unbreakable block", "still solid")
@@ -250,7 +250,7 @@ func TestAwaitBreakReportsABlockThatNeverBreaks(t *testing.T) {
 func TestAwaitBreakHonoursContext(t *testing.T) {
 	c, _ := settled(t)
 	loadChunk(t, c, 0, 0)
-	c.world.setBlockState(1, 2, 3, stateStone)
+	c.world.SetBlockState(1, 2, 3, stateStone)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
@@ -266,7 +266,7 @@ func TestAwaitBreakHonoursContext(t *testing.T) {
 func TestConfirmBlockBecameUsesTargetability(t *testing.T) {
 	c, _ := settled(t)
 	loadChunk(t, c, 0, 0)
-	c.world.setBlockState(1, 2, 3, stateWeb)
+	c.world.SetBlockState(1, 2, 3, stateWeb)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
@@ -294,13 +294,13 @@ func TestDigBlocksReportsUnreachableAndKeepsGoing(t *testing.T) {
 
 	targets := [][3]int32{{0, 63, 0}, {1, 63, 0}, {60, 63, 0}}
 	for _, b := range targets {
-		c.world.setBlockState(b[0], b[1], b[2], stateStone)
+		c.world.SetBlockState(b[0], b[1], b[2], stateStone)
 	}
 	go func() {
 		time.Sleep(30 * time.Millisecond)
-		c.world.setBlockState(0, 63, 0, stateAir)
+		c.world.SetBlockState(0, 63, 0, stateAir)
 		time.Sleep(30 * time.Millisecond)
-		c.world.setBlockState(1, 63, 0, stateAir)
+		c.world.SetBlockState(1, 63, 0, stateAir)
 	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -378,7 +378,7 @@ func TestInteractEntitySends(t *testing.T) {
 func TestAttackTimesRespectsTheCooldown(t *testing.T) {
 	c, _ := settled(t)
 	setPosition(c, 0, 0, 0)
-	c.entities.spawn(&Entity{ID: 1, TypeName: "minecraft:zombie", X: 1})
+	c.entities.Spawn(&Entity{ID: 1, TypeName: "minecraft:zombie", X: 1})
 
 	// Three hits at a 600ms cooldown cannot fit in 50ms, so the context must
 	// cut it short rather than the cooldown being skipped.
@@ -438,7 +438,7 @@ func TestSneakAlwaysReleases(t *testing.T) {
 
 func TestHoldItemSelectsAHotbarSlotDirectly(t *testing.T) {
 	c, s := settled(t)
-	c.inv.setSlot(SlotHotbarStart+4, stack(SlotHotbarStart+4, "diamond_pickaxe", 1))
+	c.inv.SetSlot(SlotHotbarStart+4, stack(SlotHotbarStart+4, "diamond_pickaxe", 1))
 
 	got, err := c.HoldItem("diamond_pickaxe")
 	if err != nil {
@@ -460,7 +460,7 @@ func TestHoldItemSelectsAHotbarSlotDirectly(t *testing.T) {
 // in the main inventory has to be swapped onto the hotbar.
 func TestHoldItemSwapsFromTheMainInventory(t *testing.T) {
 	c, s := settled(t)
-	c.inv.setSlot(20, stack(20, "diamond_pickaxe", 1))
+	c.inv.SetSlot(20, stack(20, "diamond_pickaxe", 1))
 
 	if _, err := c.HoldItem("diamond_pickaxe"); err != nil {
 		t.Fatalf("HoldItem: %v", err)
@@ -482,14 +482,14 @@ func TestHoldItemSwapsFromTheMainInventory(t *testing.T) {
 // A partial view is why a "missing" item might not actually be missing.
 func TestHoldItemExplainsATruncatedView(t *testing.T) {
 	c, _ := settled(t)
-	c.inv.replaceAll(nil, true)
+	c.inv.ReplaceAll(nil, true)
 	wantErrContaining(t, func() error { _, err := c.HoldItem("diamond_pickaxe"); return err }(),
 		"HoldItem with a truncated view", "incomplete")
 }
 
 func TestEquipArmourSkipsAlreadyWornItems(t *testing.T) {
 	c, s := settled(t)
-	c.inv.setSlot(SlotArmorHead, stack(SlotArmorHead, "diamond_helmet", 1))
+	c.inv.SetSlot(SlotArmorHead, stack(SlotArmorHead, "diamond_helmet", 1))
 
 	if _, err := c.EquipArmour("diamond_helmet"); err != nil {
 		t.Fatalf("EquipArmour: %v", err)
@@ -503,7 +503,7 @@ func TestEquipArmourSkipsAlreadyWornItems(t *testing.T) {
 // replicating them client-side.
 func TestEquipArmourQuickMoves(t *testing.T) {
 	c, s := settled(t)
-	c.inv.setSlot(20, stack(20, "diamond_helmet", 1))
+	c.inv.SetSlot(20, stack(20, "diamond_helmet", 1))
 
 	if _, err := c.EquipArmour("diamond_helmet"); err != nil {
 		t.Fatalf("EquipArmour: %v", err)
@@ -525,22 +525,6 @@ func TestEquipArmourNeedsTheItem(t *testing.T) {
 	c, _ := settled(t)
 	if _, err := c.EquipArmour("diamond_helmet"); err == nil {
 		t.Error("EquipArmour with an empty inventory = nil error, want an error")
-	}
-}
-
-// Mid-craft, FindItem would find the ingredient just placed into the grid and
-// pick its own work back up — which produced an oak_button from four planks.
-func TestFindInStorageIgnoresTheCraftingGrid(t *testing.T) {
-	c, _ := settled(t)
-	c.inv.setSlot(SlotCraftGridA, stack(SlotCraftGridA, "oak_planks", 1))
-	c.inv.setSlot(20, stack(20, "oak_planks", 4))
-
-	got, ok := c.findInStorage("oak_planks")
-	if !ok {
-		t.Fatal("findInStorage found nothing")
-	}
-	if got.Slot != 20 {
-		t.Errorf("findInStorage = slot %d, want 20 — the grid must not be searched", got.Slot)
 	}
 }
 
@@ -614,7 +598,7 @@ func TestFallToRejectsAHeightAlreadyPassed(t *testing.T) {
 func TestFallOnSolidGroundIsANoOp(t *testing.T) {
 	c, _ := settled(t)
 	loadChunk(t, c, 0, 0)
-	c.world.setBlockState(0, 63, 0, stateStone)
+	c.world.SetBlockState(0, 63, 0, stateStone)
 	setPosition(c, 0.5, 64, 0.5)
 
 	fell, err := c.Fall(context.Background())
@@ -629,7 +613,7 @@ func TestFallOnSolidGroundIsANoOp(t *testing.T) {
 func TestFallRefusesLava(t *testing.T) {
 	c, _ := settled(t)
 	loadChunk(t, c, 0, 0)
-	c.world.setBlockState(0, 60, 0, stateLava)
+	c.world.SetBlockState(0, 60, 0, stateLava)
 	setPosition(c, 0.5, 70, 0.5)
 
 	_, err := c.Fall(context.Background())
@@ -644,7 +628,7 @@ func TestFallIntoWaterStopsAtTheSurface(t *testing.T) {
 	c.opts.DisableIdlePosition = true
 	loadChunk(t, c, 0, 0)
 	for y := int32(58); y <= 62; y++ {
-		c.world.setBlockState(0, y, 0, stateWater)
+		c.world.SetBlockState(0, y, 0, stateWater)
 	}
 	setPosition(c, 0.5, 70, 0.5)
 

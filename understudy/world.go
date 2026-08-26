@@ -10,122 +10,24 @@ import (
 	"github.com/blocktopia/understudy-client/protocol"
 )
 
-// chunkKey identifies a chunk column.
-type chunkKey struct{ X, Z int32 }
-
-// world is the bot's view of loaded terrain.
-//
-// It exists to answer one question cheaply and exactly: what block is at this
-// coordinate? Everything the bot could not otherwise do for itself — find the
-// floor, notice it is underwater, confirm a block actually broke — reduces to
-// that.
-//
-// The mutex guards the columns as well as the map holding them. That is not
-// belt-and-braces: a block update rewrites a section in place, and expanding a
-// uniform section to direct encoding replaces its backing arrays outright — so
-// a reader that only synchronised on the map lookup would walk a slice being
-// swapped underneath it. Terrain updates arrive on the read loop while a
-// control API traces rays from its own goroutines, which is exactly that race.
-//
-// All access therefore holds the lock for the whole operation, not just long
-// enough to find the column.
-type world struct {
-	mu     sync.RWMutex
-	chunks map[chunkKey]*protocol.ChunkColumn
-}
-
-func newWorld() *world {
-	return &world{chunks: make(map[chunkKey]*protocol.ChunkColumn)}
-}
-
-func (w *world) store(c *protocol.ChunkColumn) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.chunks[chunkKey{c.X, c.Z}] = c
-}
-
-func (w *world) drop(x, z int32) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	delete(w.chunks, chunkKey{x, z})
-}
-
-func (w *world) reset() {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	clear(w.chunks)
-}
-
-func (w *world) loaded() int {
-	w.mu.RLock()
-	defer w.mu.RUnlock()
-	return len(w.chunks)
-}
-
-// blockState returns the state at world coordinates, or air if the chunk is
-// not loaded.
-//
-// Arithmetic shift, not division: dividing a negative coordinate by 16 rounds
-// towards zero and lands on the wrong chunk for every negative coordinate.
-func (w *world) blockState(x, y, z int32) int32 {
-	w.mu.RLock()
-	defer w.mu.RUnlock()
-	// BlockState is nil-safe, so a miss reads as air without a branch here.
-	return w.chunks[chunkKey{x >> 4, z >> 4}].BlockState(x, y, z)
-}
-
-// setBlockState applies a single block update. It takes the write lock because
-// it mutates the column — see the note on world.
-func (w *world) setBlockState(x, y, z, state int32) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.chunks[chunkKey{x >> 4, z >> 4}].SetBlockState(x, y, z, state)
-}
-
-// scan runs fn with the read lock held once, handing it a block lookup.
-//
-// A ground scan or a ray trace reads hundreds of blocks along a line. Doing
-// that a locked call at a time is hundreds of round trips through the mutex
-// while the read loop is trying to store chunks, and — worse — lets terrain
-// change halfway through, so the scan answers about a world that never existed.
-//
-// fn must not call back into the world, and must not retain the lookup.
-func (w *world) scan(fn func(at func(x, y, z int32) int32)) {
-	w.mu.RLock()
-	defer w.mu.RUnlock()
-	fn(func(x, y, z int32) int32 {
-		return w.chunks[chunkKey{x >> 4, z >> 4}].BlockState(x, y, z)
-	})
-}
-
-// hasChunk reports whether the column covering a coordinate is loaded. Callers
-// must check this before trusting an "air" answer, since an unloaded chunk is
-// indistinguishable from empty space.
-func (w *world) hasChunk(x, z int32) bool {
-	w.mu.RLock()
-	defer w.mu.RUnlock()
-	_, ok := w.chunks[chunkKey{x >> 4, z >> 4}]
-	return ok
-}
-
 // BlockAt returns the block state at world coordinates.
-func (c *Client) BlockAt(x, y, z int32) int32 { return c.world.blockState(x, y, z) }
+func (c *Client) BlockAt(x, y, z int32) int32 { return c.world.BlockState(x, y, z) }
 
 // ChunkLoaded reports whether terrain covering a coordinate is known.
-func (c *Client) ChunkLoaded(x, z int32) bool { return c.world.hasChunk(x, z) }
+func (c *Client) ChunkLoaded(x, z int32) bool { return c.world.HasChunk(x, z) }
 
 // LoadedChunks returns how many chunk columns are currently held.
-func (c *Client) LoadedChunks() int { return c.world.loaded() }
+func (c *Client) LoadedChunks() int { return c.world.Loaded() }
 
 // IsSolidAt reports whether the block at a coordinate blocks movement.
 func (c *Client) IsSolidAt(x, y, z int32) bool {
-	return c.v.IsSolid(c.world.blockState(x, y, z))
+	return c.v.IsSolid(c.world.BlockState(x, y, z))
 }
 
 // IsTargetableAt reports whether the crosshair would stop on this block —
 // true for cobweb, crops and torches, which IsSolidAt reports as empty.
 func (c *Client) IsTargetableAt(x, y, z int32) bool {
-	return c.v.IsTargetable(c.world.blockState(x, y, z))
+	return c.v.IsTargetable(c.world.BlockState(x, y, z))
 }
 
 // Support describes what a bot is standing in or on.
@@ -155,11 +57,11 @@ const maxGroundSearch = 512
 // which callers must not confuse with "the void": an unloaded chunk reads as
 // air everywhere.
 func (c *Client) FindGround(x, y, z int32) Support {
-	if !c.world.hasChunk(x, z) {
+	if !c.world.HasChunk(x, z) {
 		return Support{}
 	}
 	var support Support
-	c.world.scan(func(at func(x, y, z int32) int32) {
+	c.world.Scan(func(at func(x, y, z int32) int32) {
 		for probe := y; probe > y-maxGroundSearch; probe-- {
 			state := at(x, probe, z)
 			switch {
@@ -198,7 +100,7 @@ func (c *Client) Submerged() bool {
 	pos := c.Position()
 	// The head block sits one above the feet.
 	x, head, z := geom.BlockPos(pos.X, pos.Y+1.0, pos.Z)
-	return c.v.IsWater(c.world.blockState(x, head, z))
+	return c.v.IsWater(c.world.BlockState(x, head, z))
 }
 
 // WaterSurfaceAbove finds the Y at which the bot's head would clear the water,
@@ -206,7 +108,7 @@ func (c *Client) Submerged() bool {
 func (c *Client) WaterSurfaceAbove() (surfaceY float64, found bool) {
 	pos := c.Position()
 	x, start, z := geom.BlockPos(pos.X, pos.Y, pos.Z)
-	c.world.scan(func(at func(x, y, z int32) int32) {
+	c.world.Scan(func(at func(x, y, z int32) int32) {
 		for probe := start; probe < start+maxGroundSearch; probe++ {
 			if !c.v.IsWater(at(x, probe+1, z)) {
 				surfaceY, found = float64(probe), true
@@ -243,7 +145,7 @@ func (c *Client) waitForChunk(ctx context.Context, timeout time.Duration) bool {
 	loaded := func() bool {
 		pos := c.Position()
 		x, _, z := geom.BlockPos(pos.X, pos.Y, pos.Z)
-		return c.world.hasChunk(x, z)
+		return c.world.HasChunk(x, z)
 	}
 	if loaded() {
 		return true
@@ -299,7 +201,7 @@ func (c *Client) handleWorldPacket(p protocol.Packet) (bool, error) {
 			c.log.Warn("chunk parse failed", "x", x, "z", z, "err", err)
 			return true, nil
 		}
-		c.world.store(column)
+		c.world.Store(column)
 		return true, nil
 
 	case c.v.Packets.CBPlayChunkBatchFinished:
@@ -336,7 +238,7 @@ func (c *Client) handleWorldPacket(p protocol.Packet) (bool, error) {
 		if err := r.Err(); err != nil {
 			return true, err
 		}
-		c.world.drop(x, z)
+		c.world.Drop(x, z)
 		return true, nil
 
 	case c.v.Packets.CBPlayBlockChange:
@@ -347,7 +249,7 @@ func (c *Client) handleWorldPacket(p protocol.Packet) (bool, error) {
 			return true, err
 		}
 		x, y, z := protocol.DecodeBlockPos(packed)
-		c.world.setBlockState(x, y, z, state)
+		c.world.SetBlockState(x, y, z, state)
 		return true, nil
 
 	case c.v.Packets.CBPlayMultiBlockChange:
@@ -371,7 +273,7 @@ func (c *Client) handleWorldPacket(p protocol.Packet) (bool, error) {
 			dx := int32(local>>8) & 0xf
 			dz := int32(local>>4) & 0xf
 			dy := int32(local) & 0xf
-			c.world.setBlockState(
+			c.world.SetBlockState(
 				sectionX*16+dx,
 				sectionY*16+dy,
 				sectionZ*16+dz,

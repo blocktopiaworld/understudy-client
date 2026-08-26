@@ -5,113 +5,18 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"sync"
 	"time"
 
+	"github.com/blocktopia/understudy-client/internal/entities"
 	"github.com/blocktopia/understudy-client/internal/geom"
 	"github.com/blocktopia/understudy-client/protocol"
 )
 
 // Entity is a tracked entity in the bot's view of the world.
-type Entity struct {
-	ID       int32         `json:"id"`
-	Type     int32         `json:"type"`
-	TypeName string        `json:"type_name"`
-	UUID     protocol.UUID `json:"-"`
-	X        float64       `json:"x"`
-	Y        float64       `json:"y"`
-	Z        float64       `json:"z"`
-}
-
-// entityTracker maintains the set of entities the server has told us about.
 //
-// This is the minimum needed to *address* an entity: attacking takes a numeric
-// entity ID, and the only place an ID ever appears is the spawn packet. Without
-// tracking, the attack verb is unusable — there is no other way to learn one.
-//
-// It deliberately stores position only. Health, equipment and metadata all
-// arrive as separate packets with far more decoding surface, and none of it is
-// needed to pick a target and hit it.
-type entityTracker struct {
-	mu       sync.RWMutex
-	entities map[int32]*Entity
-}
-
-func newEntityTracker() *entityTracker {
-	return &entityTracker{entities: make(map[int32]*Entity)}
-}
-
-func (t *entityTracker) spawn(e *Entity) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.entities[e.ID] = e
-}
-
-func (t *entityTracker) remove(ids []int32) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	for _, id := range ids {
-		delete(t.entities, id)
-	}
-}
-
-// moveRelative applies a delta. Updates for an entity we never saw spawn are
-// dropped: without a spawn packet there is no type, and a typeless entity
-// cannot be selected for anything useful.
-func (t *entityTracker) moveRelative(id int32, dx, dy, dz float64) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if e, ok := t.entities[id]; ok {
-		e.X += dx
-		e.Y += dy
-		e.Z += dz
-	}
-}
-
-func (t *entityTracker) teleport(id int32, x, y, z float64) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if e, ok := t.entities[id]; ok {
-		e.X, e.Y, e.Z = x, y, z
-	}
-}
-
-// all returns a snapshot. The entities are copied out rather than shared,
-// because the tracker keeps mutating the originals as movement packets arrive.
-func (t *entityTracker) all() []Entity {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	out := make([]Entity, 0, len(t.entities))
-	for _, e := range t.entities {
-		out = append(out, *e)
-	}
-	return out
-}
-
-// matching returns a snapshot filtered by type name, or everything when
-// typeName is empty. Filtering inside the lock avoids copying out an entire
-// view distance of entities to keep two of them.
-func (t *entityTracker) matching(typeName string) []Entity {
-	if typeName == "" {
-		return t.all()
-	}
-	want := protocol.Namespaced(typeName)
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	var out []Entity
-	for _, e := range t.entities {
-		if e.TypeName == want {
-			out = append(out, *e)
-		}
-	}
-	return out
-}
-
-func (t *entityTracker) reset() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	clear(t.entities)
-}
+// An alias rather than a wrapper: the tracker owns the type, and callers of
+// this package should not have to import an internal one to name it.
+type Entity = entities.Entity
 
 // byDistance sorts entities nearest-first from a position, in place.
 func byDistance(list []Entity, from Position) {
@@ -122,7 +27,7 @@ func byDistance(list []Entity, from Position) {
 
 // Entities returns every tracked entity, nearest first.
 func (c *Client) Entities() []Entity {
-	list := c.entities.all()
+	list := c.entities.All()
 	byDistance(list, c.Position())
 	return list
 }
@@ -131,7 +36,7 @@ func (c *Client) Entities() []Entity {
 // first. The match accepts a bare name ("zombie") as well as a namespaced one
 // ("minecraft:zombie").
 func (c *Client) EntitiesOfType(typeName string) []Entity {
-	list := c.entities.matching(typeName)
+	list := c.entities.Matching(typeName)
 	byDistance(list, c.Position())
 	return list
 }
@@ -139,7 +44,7 @@ func (c *Client) EntitiesOfType(typeName string) []Entity {
 // NearestEntity returns the closest entity of the given type. An empty
 // typeName matches any type.
 func (c *Client) NearestEntity(typeName string) (Entity, error) {
-	candidates := c.entities.matching(typeName)
+	candidates := c.entities.Matching(typeName)
 	if len(candidates) == 0 {
 		return Entity{}, fmt.Errorf("understudy: no tracked entity of type %q", typeName)
 	}
@@ -255,7 +160,7 @@ func (c *Client) aimAtNearest(action, typeName string) (Entity, error) {
 // this lookup would never match.
 func (c *Client) PlayerEntity(name string) (Entity, error) {
 	want := protocol.OfflineUUID(name)
-	tracked := c.entities.all()
+	tracked := c.entities.All()
 	for _, e := range tracked {
 		if e.UUID == want {
 			return e, nil
@@ -317,7 +222,7 @@ func (c *Client) handleEntityPacket(p protocol.Packet) (bool, error) {
 		if err := r.Err(); err != nil {
 			return true, err
 		}
-		c.entities.spawn(&Entity{
+		c.entities.Spawn(&Entity{
 			ID: id, Type: typeID, TypeName: c.v.EntityTypeName(typeID),
 			UUID: uuid, X: x, Y: y, Z: z,
 		})
@@ -339,7 +244,7 @@ func (c *Client) handleEntityPacket(p protocol.Packet) (bool, error) {
 		if err := r.Err(); err != nil {
 			return true, err
 		}
-		c.entities.remove(ids)
+		c.entities.Remove(ids)
 		return true, nil
 
 	case c.v.Packets.CBPlayRelEntityMove, c.v.Packets.CBPlayEntityMoveLook:
@@ -349,7 +254,7 @@ func (c *Client) handleEntityPacket(p protocol.Packet) (bool, error) {
 		if err := r.Err(); err != nil {
 			return true, err
 		}
-		c.entities.moveRelative(id,
+		c.entities.MoveRelative(id,
 			float64(dx)*protocol.RelativeMoveUnit,
 			float64(dy)*protocol.RelativeMoveUnit,
 			float64(dz)*protocol.RelativeMoveUnit)
@@ -362,7 +267,7 @@ func (c *Client) handleEntityPacket(p protocol.Packet) (bool, error) {
 		if err := r.Err(); err != nil {
 			return true, err
 		}
-		c.entities.teleport(id, x, y, z)
+		c.entities.Teleport(id, x, y, z)
 		return true, nil
 	}
 	return false, nil

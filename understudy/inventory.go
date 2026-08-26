@@ -1,37 +1,38 @@
 package understudy
 
 import (
-	"cmp"
 	"errors"
 	"fmt"
-	"slices"
-	"strings"
-	"sync"
 
+	"github.com/blocktopia/understudy-client/internal/inventory"
 	"github.com/blocktopia/understudy-client/protocol"
 )
 
-// Player inventory slot layout for window 0. These indices are what
-// window_click addresses, and they are not the same as the hotbar numbers a
-// player sees.
+// ItemStack is one inventory slot's contents.
+//
+// An alias rather than a wrapper: the slot store owns the type, and callers of
+// this package should not have to import an internal one to name it.
+type ItemStack = inventory.ItemStack
+
+// Player inventory slot layout for window 0, re-exported so callers never
+// reach into an internal package for a constant.
 const (
-	SlotCraftOutput = 0
-	SlotCraftGridA  = 1 // 1..4
-	SlotArmorHead   = 5 // 5..8
-	SlotMainStart   = 9 // 9..35, the three upper rows
-	SlotMainEnd     = 35
-	SlotHotbarStart = 36 // 36..44, shown to the player as 1..9
-	SlotHotbarEnd   = 44
-	SlotOffhand     = 45
-	PlayerWindowID  = 0
+	SlotCraftOutput = inventory.SlotCraftOutput
+	SlotCraftGridA  = inventory.SlotCraftGridA
+	SlotArmorHead   = inventory.SlotArmorHead
+	SlotMainStart   = inventory.SlotMainStart
+	SlotMainEnd     = inventory.SlotMainEnd
+	SlotHotbarStart = inventory.SlotHotbarStart
+	SlotHotbarEnd   = inventory.SlotHotbarEnd
+	SlotOffhand     = inventory.SlotOffhand
+	PlayerWindowID  = inventory.PlayerWindowID
 
-	hotbarSlotCount = 9
+	// StorageSlots is a player's carrying capacity: the 27 main slots plus the
+	// 9 hotbar slots, excluding armour and the offhand.
+	StorageSlots = inventory.StorageSlots
+
+	hotbarSlotCount = inventory.HotbarSlots
 )
-
-// StorageSlots is a player's carrying capacity: the 27 main slots plus the 9
-// hotbar slots. Armour and the offhand are deliberately excluded — see
-// CountItemStorage.
-const StorageSlots = 36
 
 // Container click modes. Mode 2 is the useful one here: it swaps a slot
 // directly with a hotbar slot, which moves an item into the hand without ever
@@ -43,185 +44,30 @@ const (
 	ClickModeDrop       int32 = 4
 )
 
-// ItemStack is one inventory slot's contents.
-type ItemStack struct {
-	Slot  int    `json:"slot"`
-	ID    int32  `json:"id"`
-	Name  string `json:"name"`
-	Count int32  `json:"count"`
-}
-
-// Empty reports whether the slot holds nothing.
-func (i ItemStack) Empty() bool { return i.Count <= 0 }
-
-// isStorage reports whether a slot is one of the 36 storage slots, as opposed
-// to armour, the offhand or the crafting grid.
-func (i ItemStack) isStorage() bool {
-	return i.Slot >= SlotMainStart && i.Slot <= SlotHotbarEnd
-}
-
-// inventory is the bot's view of its own slots.
-//
-// Contents arrive as whole-window snapshots (window_items) and single-slot
-// updates (set_slot). Both are tracked, because a bot can be handed items at
-// any moment and a stale view would pick the wrong tool.
-//
-// Every field is reached through a method on this type, so the locking
-// discipline lives in one place.
-type inventory struct {
-	mu      sync.RWMutex
-	slots   map[int]ItemStack
-	stateID int32
-	// truncated records that a window_items packet could not be fully decoded
-	// because an item carried data components. The slots before that point are
-	// still valid; the ones after are unknown.
-	truncated bool
-	// pickups tallies items collected off the ground, by item name.
-	pickups map[string]int32
-}
-
-func newInventory() *inventory {
-	return &inventory{
-		slots:   make(map[int]ItemStack),
-		pickups: make(map[string]int32),
-	}
-}
-
-func (inv *inventory) setSlot(slot int, item ItemStack) {
-	inv.mu.Lock()
-	defer inv.mu.Unlock()
-	if item.Empty() {
-		delete(inv.slots, slot)
-		return
-	}
-	inv.slots[slot] = item
-}
-
-func (inv *inventory) replaceAll(items []ItemStack, truncated bool) {
-	inv.mu.Lock()
-	defer inv.mu.Unlock()
-	clear(inv.slots)
-	for _, it := range items {
-		if !it.Empty() {
-			inv.slots[it.Slot] = it
-		}
-	}
-	inv.truncated = truncated
-}
-
-func (inv *inventory) setStateID(id int32) {
-	inv.mu.Lock()
-	defer inv.mu.Unlock()
-	inv.stateID = id
-}
-
-func (inv *inventory) getStateID() int32 {
-	inv.mu.RLock()
-	defer inv.mu.RUnlock()
-	return inv.stateID
-}
-
-func (inv *inventory) isTruncated() bool {
-	inv.mu.RLock()
-	defer inv.mu.RUnlock()
-	return inv.truncated
-}
-
-// slot returns one slot's contents directly, without materialising the whole
-// inventory. The crafting code asks about individual slots in a loop; doing
-// that through the sorted snapshot allocated and sorted the entire inventory
-// once per question.
-func (inv *inventory) slot(i int) (ItemStack, bool) {
-	inv.mu.RLock()
-	defer inv.mu.RUnlock()
-	it, ok := inv.slots[i]
-	return it, ok
-}
-
-// sorted returns every non-empty slot, ordered by slot index.
-func (inv *inventory) sorted() []ItemStack {
-	inv.mu.RLock()
-	out := make([]ItemStack, 0, len(inv.slots))
-	for _, it := range inv.slots {
-		out = append(out, it)
-	}
-	inv.mu.RUnlock()
-	// Stable order makes any output and any test assertion reproducible.
-	slices.SortFunc(out, func(a, b ItemStack) int { return cmp.Compare(a.Slot, b.Slot) })
-	return out
-}
-
-func (inv *inventory) recordPickup(item string, count int32) {
-	inv.mu.Lock()
-	defer inv.mu.Unlock()
-	inv.pickups[item] += count
-}
-
-func (inv *inventory) pickupTally() (total int32, byItem map[string]int32) {
-	inv.mu.RLock()
-	defer inv.mu.RUnlock()
-	out := make(map[string]int32, len(inv.pickups))
-	for k, v := range inv.pickups {
-		out[k] = v
-		total += v
-	}
-	return total, out
-}
-
-func (inv *inventory) resetPickups() {
-	inv.mu.Lock()
-	defer inv.mu.Unlock()
-	clear(inv.pickups)
-}
-
 // Inventory returns every non-empty slot the bot knows about, ordered by slot.
-func (c *Client) Inventory() []ItemStack { return c.inv.sorted() }
+func (c *Client) Inventory() []ItemStack { return c.inv.Sorted() }
 
 // SlotAt returns the contents of a specific slot.
-func (c *Client) SlotAt(slot int) (ItemStack, bool) { return c.inv.slot(slot) }
+func (c *Client) SlotAt(slot int) (ItemStack, bool) { return c.inv.Slot(slot) }
 
 // InventoryTruncated reports whether the last full-window snapshot could not be
 // decoded to the end. See the comment on inventory.truncated.
-func (c *Client) InventoryTruncated() bool { return c.inv.isTruncated() }
-
-// matchesItem reports whether a stack is the item the caller asked for.
-//
-// A bare name ("diamond_pickaxe") and a namespaced one both work, and a suffix
-// match is accepted so "pickaxe" finds "minecraft:diamond_pickaxe". The suffix
-// form is deliberately loose — it is a convenience — so callers that need
-// certainty should pass the full name and check exact.
-func matchesItem(stack ItemStack, name string) (exact, fuzzy bool) {
-	want := protocol.Namespaced(name)
-	if stack.Name == want {
-		return true, true
-	}
-	return false, strings.HasSuffix(stack.Name, "_"+protocol.BareName(name))
-}
+func (c *Client) InventoryTruncated() bool { return c.inv.Truncated() }
 
 // FindItem returns the slot holding an item, preferring an exact name match
 // and otherwise the lowest-numbered fuzzy one.
-func (c *Client) FindItem(name string) (ItemStack, bool) {
-	return findItem(c.Inventory(), name)
-}
+func (c *Client) FindItem(name string) (ItemStack, bool) { return c.inv.FindItem(name) }
 
-// findItem is the pure half of FindItem, so the matching rules can be tested
-// without a connected client.
-func findItem(items []ItemStack, name string) (ItemStack, bool) {
-	var best ItemStack
-	found, bestExact := false, false
-	for _, it := range items {
-		exact, fuzzy := matchesItem(it, name)
-		if !exact && !fuzzy {
-			continue
-		}
-		// items is slot-ordered, so the first match is the lowest slot; only an
-		// exact match may displace an earlier fuzzy one.
-		if !found || (exact && !bestExact) {
-			best, found, bestExact = it, true, exact
-		}
-	}
-	return best, found
-}
+// CountItem totals an item across every slot the bot knows about, including
+// the offhand and armour.
+func (c *Client) CountItem(name string) int32 { return c.inv.CountAll(name) }
+
+// CountItemStorage totals an item across the 36 *storage* slots only. See
+// inventory.CountStorage for why both numbers are worth having.
+func (c *Client) CountItemStorage(name string) int32 { return c.inv.CountStorage(name) }
+
+// FreeStorageSlots reports how many of the 36 storage slots are empty.
+func (c *Client) FreeStorageSlots() int { return c.inv.FreeStorageSlots() }
 
 // HoldItem puts a named item into the bot's hand, wherever it currently is.
 //
@@ -255,16 +101,16 @@ func (c *Client) HoldItem(name string) (ItemStack, error) {
 	}
 	// The server will echo the moved slots back; update optimistically so an
 	// immediately following action sees the right thing.
-	c.inv.setSlot(SlotHotbarStart+hotbar, ItemStack{
+	c.inv.SetSlot(SlotHotbarStart+hotbar, ItemStack{
 		Slot: SlotHotbarStart + hotbar, ID: item.ID, Name: item.Name, Count: item.Count,
 	})
-	c.inv.setSlot(item.Slot, ItemStack{Slot: item.Slot})
+	c.inv.SetSlot(item.Slot, ItemStack{Slot: item.Slot})
 	return item, c.SetHeldSlot(hotbar)
 }
 
 // HeldItem returns what is currently in the bot's hand.
 func (c *Client) HeldItem() (ItemStack, bool) {
-	return c.inv.slot(SlotHotbarStart + c.HeldSlot())
+	return c.inv.Slot(SlotHotbarStart + c.HeldSlot())
 }
 
 // SetHeldSlot selects a hotbar slot, 0-8.
@@ -294,55 +140,13 @@ func (c *Client) clickSlot(slot int, button int8, mode int32) error {
 	}
 	w := protocol.NewWriter(c.v.Packets.SBPlayWindowClick).
 		VarInt(PlayerWindowID).
-		VarInt(c.inv.getStateID()).
+		VarInt(c.inv.StateID()).
 		I16(int16(slot)).
 		I8(button).
 		VarInt(mode).
 		VarInt(0). // changedSlots: empty, let the server resync
 		Bool(false)
 	return c.conn.WritePacket(w.Bytes())
-}
-
-// CountItem totals an item across every slot the bot knows about, including
-// the offhand and armour.
-func (c *Client) CountItem(name string) int32 {
-	return c.countItems(name, func(ItemStack) bool { return true })
-}
-
-// CountItemStorage totals an item across the 36 *storage* slots only.
-//
-// The distinction is not academic. Server implementations disagree about what
-// "the inventory" means: some scan the 36 storage slots, others the whole
-// container (41, including armour and the offhand). An item in the offhand
-// therefore counts on one and not the other. Reporting both numbers is what
-// lets a caller detect that divergence rather than silently inherit it.
-func (c *Client) CountItemStorage(name string) int32 {
-	return c.countItems(name, ItemStack.isStorage)
-}
-
-// countItems totals exact name matches across the slots a filter admits.
-// Counting is deliberately exact-match only: a fuzzy total would silently add
-// dark_oak_planks to an oak_planks count.
-func (c *Client) countItems(name string, include func(ItemStack) bool) int32 {
-	want := protocol.Namespaced(name)
-	var total int32
-	for _, it := range c.Inventory() {
-		if it.Name == want && include(it) {
-			total += it.Count
-		}
-	}
-	return total
-}
-
-// FreeStorageSlots reports how many of the 36 storage slots are empty.
-func (c *Client) FreeStorageSlots() int {
-	used := 0
-	for _, it := range c.Inventory() {
-		if it.isStorage() && !it.Empty() {
-			used++
-		}
-	}
-	return StorageSlots - used
 }
 
 // SlotsNeeded reports how many slots a quantity of an item would occupy, and
@@ -370,12 +174,12 @@ func (c *Client) SlotsNeeded(name string, count int32) (slots int, fits bool) {
 // meant it to touch, and quietly changes the inventory something else is
 // measuring. Either way it is better observed than inferred afterwards.
 func (c *Client) PickupsSeen() (total int32, byItem map[string]int32) {
-	return c.inv.pickupTally()
+	return c.inv.Pickups()
 }
 
 // ResetPickups clears the pickup tally, so a caller can measure a window
 // rather than a session.
-func (c *Client) ResetPickups() { c.inv.resetPickups() }
+func (c *Client) ResetPickups() { c.inv.ResetPickups() }
 
 // pickupItemKey is the key PickupsSeen tallies under.
 //
@@ -486,7 +290,7 @@ func (c *Client) handleWindowItems(p protocol.Packet) error {
 	if err := r.Err(); err != nil {
 		return err
 	}
-	c.inv.setStateID(stateID)
+	c.inv.SetStateID(stateID)
 	if windowID != PlayerWindowID {
 		return nil // a chest or similar; not tracked
 	}
@@ -509,7 +313,7 @@ func (c *Client) handleWindowItems(p protocol.Packet) error {
 		item.Slot = int(i)
 		items = append(items, item)
 	}
-	c.inv.replaceAll(items, truncated)
+	c.inv.ReplaceAll(items, truncated)
 	return nil
 }
 
@@ -521,7 +325,7 @@ func (c *Client) handleSetSlot(p protocol.Packet) error {
 	if err := r.Err(); err != nil {
 		return err
 	}
-	c.inv.setStateID(stateID)
+	c.inv.SetStateID(stateID)
 	if windowID != PlayerWindowID {
 		return nil
 	}
@@ -532,7 +336,7 @@ func (c *Client) handleSetSlot(p protocol.Packet) error {
 		return nil
 	}
 	item.Slot = int(slot)
-	c.inv.setSlot(int(slot), item)
+	c.inv.SetSlot(int(slot), item)
 	return nil
 }
 
@@ -548,7 +352,7 @@ func (c *Client) handleCollect(p protocol.Packet) error {
 	if collector != c.EntityID() {
 		return nil
 	}
-	c.inv.recordPickup(pickupItemKey, count)
+	c.inv.RecordPickup(pickupItemKey, count)
 	c.log.Debug("picked up", "count", count, "entity", collected)
 	return nil
 }

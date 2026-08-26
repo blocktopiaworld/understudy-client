@@ -11,7 +11,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/blocktopia/understudy-client/internal/entities"
+	"github.com/blocktopia/understudy-client/internal/inventory"
 	"github.com/blocktopia/understudy-client/internal/nbt"
+	"github.com/blocktopia/understudy-client/internal/world"
 	"github.com/blocktopia/understudy-client/protocol"
 )
 
@@ -127,9 +130,9 @@ type Client struct {
 	opts     Options
 	log      *slog.Logger
 	conn     *protocol.Conn
-	entities *entityTracker
-	world    *world
-	inv      *inventory
+	entities *entities.Tracker
+	world    *world.World
+	inv      *inventory.Inventory
 	// v holds every version-specific detail: packet IDs, entity and block
 	// tables, and the chunk framing flags. Resolved during Connect, since
 	// auto-detection needs a round trip to the server, and read-only after.
@@ -203,9 +206,9 @@ func New(opts Options) (*Client, error) {
 		v:        version,
 		log:      opts.Logger.With("bot", opts.Username),
 		uuid:     protocol.OfflineUUID(opts.Username),
-		entities: newEntityTracker(),
-		world:    newWorld(),
-		inv:      newInventory(),
+		entities: entities.New(),
+		world:    world.New(),
+		inv:      inventory.New(),
 	}, nil
 }
 
@@ -390,10 +393,10 @@ func (c *Client) handleSessionPacket(ctx context.Context, p protocol.Packet) (bo
 		// A respawn can cross dimensions, and entity IDs do not survive that.
 		// Keeping stale entries would let the bot attack an ID that now means
 		// something else, or nothing.
-		c.entities.reset()
+		c.entities.Reset()
 		// Terrain is dimension-scoped too, and the same chunk coordinate means
 		// different blocks on the other side of a portal.
-		c.world.reset()
+		c.world.Reset()
 		c.log.Info("respawned")
 		return true, nil
 

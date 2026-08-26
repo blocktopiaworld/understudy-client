@@ -30,7 +30,7 @@ type RayHit struct {
 func (c *Client) RayTrace(ox, oy, oz, dx, dy, dz, maxDist float64) (RayHit, bool) {
 	var hit RayHit
 	found := false
-	c.world.scan(func(at func(x, y, z int32) int32) {
+	c.world.Scan(func(at func(x, y, z int32) int32) {
 		h, ok := geom.Raycast(ox, oy, oz, dx, dy, dz, maxDist,
 			func(x, y, z int32) bool { return c.v.IsTargetable(at(x, y, z)) })
 		if !ok {

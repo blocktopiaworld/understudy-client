@@ -7,8 +7,8 @@ import "testing"
 func TestRayTraceStopsOnTargetableBlocks(t *testing.T) {
 	c := newTestClient(t)
 	loadChunk(t, c, 0, 0)
-	c.world.setBlockState(3, 0, 0, stateStone)
-	c.world.setBlockState(5, 0, 0, stateStone)
+	c.world.SetBlockState(3, 0, 0, stateStone)
+	c.world.SetBlockState(5, 0, 0, stateStone)
 
 	hit, ok := c.RayTrace(0.5, 0.5, 0.5, 1, 0, 0, 10)
 	if !ok {
@@ -31,8 +31,8 @@ func TestRayTraceStopsOnTargetableBlocks(t *testing.T) {
 func TestRayTraceStopsOnTargetableNonSolidBlocks(t *testing.T) {
 	c := newTestClient(t)
 	loadChunk(t, c, 0, 0)
-	c.world.setBlockState(2, 0, 0, stateWeb)
-	c.world.setBlockState(4, 0, 0, stateStone)
+	c.world.SetBlockState(2, 0, 0, stateWeb)
+	c.world.SetBlockState(4, 0, 0, stateStone)
 
 	hit, ok := c.RayTrace(0.5, 0.5, 0.5, 1, 0, 0, 10)
 	if !ok {
@@ -47,8 +47,8 @@ func TestRayTraceStopsOnTargetableNonSolidBlocks(t *testing.T) {
 func TestRayTracePassesThroughFluids(t *testing.T) {
 	c := newTestClient(t)
 	loadChunk(t, c, 0, 0)
-	c.world.setBlockState(2, 0, 0, stateWater)
-	c.world.setBlockState(4, 0, 0, stateStone)
+	c.world.SetBlockState(2, 0, 0, stateWater)
+	c.world.SetBlockState(4, 0, 0, stateStone)
 
 	hit, ok := c.RayTrace(0.5, 0.5, 0.5, 1, 0, 0, 10)
 	if !ok {
@@ -69,7 +69,7 @@ func TestLineOfSightStates(t *testing.T) {
 
 	t.Run("clear", func(t *testing.T) {
 		c := setup(t)
-		c.world.setBlockState(3, 1, 0, stateStone)
+		c.world.SetBlockState(3, 1, 0, stateStone)
 		hit, s := c.LineOfSightTo(3, 1, 0)
 		if s != sightClear {
 			t.Errorf("sight = %v, want sightClear (hit %v)", s, hit)
@@ -81,8 +81,8 @@ func TestLineOfSightStates(t *testing.T) {
 
 	t.Run("blocked by something in between", func(t *testing.T) {
 		c := setup(t)
-		c.world.setBlockState(2, 1, 0, stateStone)
-		c.world.setBlockState(3, 1, 0, stateStone)
+		c.world.SetBlockState(2, 1, 0, stateStone)
+		c.world.SetBlockState(3, 1, 0, stateStone)
 		hit, s := c.LineOfSightTo(3, 1, 0)
 		if s != sightBlocked {
 			t.Fatalf("sight = %v, want sightBlocked", s)
@@ -122,7 +122,7 @@ func TestLineOfSightAtTheWorldOrigin(t *testing.T) {
 	c := newTestClient(t)
 	loadChunk(t, c, 0, 0)
 	setPosition(c, 0.5, 2, 3.5)
-	c.world.setBlockState(0, 0, 0, stateStone)
+	c.world.SetBlockState(0, 0, 0, stateStone)
 
 	hit, s := c.LineOfSightTo(0, 0, 0)
 	if s != sightClear {
@@ -140,7 +140,7 @@ func TestLookingAtUsesEyeHeight(t *testing.T) {
 	loadChunk(t, c, 0, 0)
 	setPosition(c, 0.5, 0, 0.5)
 	setLook(c, 0, 0) // due south (+Z), level
-	c.world.setBlockState(0, 1, 3, stateStone)
+	c.world.SetBlockState(0, 1, 3, stateStone)
 
 	hit, ok := c.LookingAt()
 	if !ok {
@@ -156,7 +156,7 @@ func TestLookingAtRespectsReach(t *testing.T) {
 	loadChunk(t, c, 0, 0)
 	setPosition(c, 0.5, 0, 0.5)
 	setLook(c, 0, 0)
-	c.world.setBlockState(0, 1, 8, stateStone) // beyond BlockReach
+	c.world.SetBlockState(0, 1, 8, stateStone) // beyond BlockReach
 	if _, ok := c.LookingAt(); ok {
 		t.Error("LookingAt found a block beyond the reach limit, want no hit")
 	}
