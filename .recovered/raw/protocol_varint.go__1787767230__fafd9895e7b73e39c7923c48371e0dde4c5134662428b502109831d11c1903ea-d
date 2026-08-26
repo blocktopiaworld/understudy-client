@@ -1,0 +1,89 @@
+//line /home/smoca/work/blocktopia/blocktopia-client/protocol/varint.go:1:1
+package protocol
+
+import (
+	"errors"
+	"io"
+)
+
+// Minecraft's VarInt/VarLong: 7 payload bits per byte, high bit means
+// "another byte follows". A VarInt is capped at 5 bytes and a VarLong at 10 —
+// a longer run is a malformed stream (or a desync), and it has to be an error
+// rather than a silent truncation, because a desynced length prefix would
+// otherwise be read as a plausible packet boundary and corrupt everything
+// after it.
+const (
+	maxVarIntBytes  = 5
+	maxVarLongBytes = 10
+)
+
+var errVarIntTooLong = errors.New("protocol: VarInt exceeds 5 bytes")
+var errVarLongTooLong = errors.New("protocol: VarLong exceeds 10 bytes")
+
+// ReadVarInt reads a VarInt from r.
+func ReadVarInt(r io.ByteReader) (int32, error) {goCover_057b68bc3a18__47[0] = 6 ; goCover_057b68bc3a18__47[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__47[2] = 47 ; goCover_057b68bc3a18__47[3] = 1;
+	var value uint32
+	for i := 0; i < maxVarIntBytes; i++ {goCover_057b68bc3a18__47[5] = 1;
+		b, err := r.ReadByte()
+		if err != nil {goCover_057b68bc3a18__47[7] = 1;
+			return 0, err
+		}
+		goCover_057b68bc3a18__47[6] = 1;value |= uint32(b&0x7f) << (7 * i)
+		if b&0x80 == 0 {goCover_057b68bc3a18__47[8] = 1;
+			return int32(value), nil
+		}
+	}
+	goCover_057b68bc3a18__47[4] = 1;return 0, errVarIntTooLong
+}
+
+// ReadVarLong reads a VarLong from r.
+func ReadVarLong(r io.ByteReader) (int64, error) {goCover_057b68bc3a18__48[0] = 6 ; goCover_057b68bc3a18__48[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__48[2] = 48 ; goCover_057b68bc3a18__48[3] = 1;
+	var value uint64
+	for i := 0; i < maxVarLongBytes; i++ {goCover_057b68bc3a18__48[5] = 1;
+		b, err := r.ReadByte()
+		if err != nil {goCover_057b68bc3a18__48[7] = 1;
+			return 0, err
+		}
+		goCover_057b68bc3a18__48[6] = 1;value |= uint64(b&0x7f) << (7 * i)
+		if b&0x80 == 0 {goCover_057b68bc3a18__48[8] = 1;
+			return int64(value), nil
+		}
+	}
+	goCover_057b68bc3a18__48[4] = 1;return 0, errVarLongTooLong
+}
+
+// AppendVarInt appends the VarInt encoding of v to dst.
+func AppendVarInt(dst []byte, v int32) []byte {goCover_057b68bc3a18__49[0] = 4 ; goCover_057b68bc3a18__49[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__49[2] = 49 ; goCover_057b68bc3a18__49[3] = 1;
+	u := uint32(v)
+	for {goCover_057b68bc3a18__49[4] = 1;
+		if u&^0x7f == 0 {goCover_057b68bc3a18__49[6] = 1;
+			return append(dst, byte(u))
+		}
+		goCover_057b68bc3a18__49[5] = 1;dst = append(dst, byte(u&0x7f)|0x80)
+		u >>= 7
+	}
+}
+
+// AppendVarLong appends the VarLong encoding of v to dst.
+func AppendVarLong(dst []byte, v int64) []byte {goCover_057b68bc3a18__50[0] = 4 ; goCover_057b68bc3a18__50[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__50[2] = 50 ; goCover_057b68bc3a18__50[3] = 1;
+	u := uint64(v)
+	for {goCover_057b68bc3a18__50[4] = 1;
+		if u&^0x7f == 0 {goCover_057b68bc3a18__50[6] = 1;
+			return append(dst, byte(u))
+		}
+		goCover_057b68bc3a18__50[5] = 1;dst = append(dst, byte(u&0x7f)|0x80)
+		u >>= 7
+	}
+}
+
+// VarIntLen reports how many bytes AppendVarInt would write, for sizing a
+// buffer before encoding into it.
+func VarIntLen(v int32) int {goCover_057b68bc3a18__51[0] = 3 ; goCover_057b68bc3a18__51[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__51[2] = 51 ; goCover_057b68bc3a18__51[3] = 1;
+	u := uint32(v)
+	n := 1
+	for u&^0x7f != 0 {goCover_057b68bc3a18__51[5] = 1;
+		u >>= 7
+		n++
+	}
+	goCover_057b68bc3a18__51[4] = 1;return n
+}

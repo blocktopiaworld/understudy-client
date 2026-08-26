@@ -1,0 +1,174 @@
+//line /home/smoca/work/blocktopia/blocktopia-client/cmd/blwbot/main.go:1:1
+// Command blwbot connects a single bot to a Minecraft server and holds the
+// connection open. It is the smoke test for the connection layer: if this
+// prints "joined the game" and the server log agrees, the handshake, login,
+// configuration and play plumbing all work.
+package main; import _ "runtime/coverage"
+
+import (
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"log/slog"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/blocktopia/client/client"
+	"github.com/blocktopia/client/internal/control"
+	"github.com/blocktopia/client/protocol"
+)
+
+func main() {goCover_0c8c214784e2__0[0] = 2 ; goCover_0c8c214784e2__0[1] = goCover_0c8c214784e2_P ; goCover_0c8c214784e2__0[2] = 0 ; goCover_0c8c214784e2__0[3] = 1;
+	// All the work is in run so that every defer — the signal handler, the
+	// connection close, the context cancels — actually runs. os.Exit does not
+	// unwind the stack, so calling it from the middle of main skipped the
+	// close and left the server holding a half-open player slot.
+	if err := run(os.Args[1:], os.Stderr); err != nil {goCover_0c8c214784e2__0[4] = 1;
+		fmt.Fprintln(os.Stderr, "blwbot:", err)
+		os.Exit(1)
+	}
+}
+
+// config is the parsed command line.
+type config struct {
+	addr         string
+	username     string
+	hold         time.Duration
+	version      string
+	listVersions bool
+	control      string
+	noRespawn    bool
+	noIdlePos    bool
+	trace        bool
+	debug        bool
+}
+
+// parseFlags parses argv into a config. Split from run so the flag set is not
+// package-global state and a test can parse its own arguments.
+func parseFlags(args []string, out *os.File) (config, error) {goCover_0c8c214784e2__1[0] = 3 ; goCover_0c8c214784e2__1[1] = goCover_0c8c214784e2_P ; goCover_0c8c214784e2__1[2] = 1 ; goCover_0c8c214784e2__1[3] = 1;
+	var cfg config
+	fs := flag.NewFlagSet("blwbot", flag.ContinueOnError)
+	fs.SetOutput(out)
+	fs.StringVar(&cfg.addr, "addr", "127.0.0.1:25565", "server host:port")
+	fs.StringVar(&cfg.username, "username", "BlwBot", "offline-mode player name")
+	fs.DurationVar(&cfg.hold, "hold", 15*time.Second,
+		"how long to stay connected after joining (0 = until interrupted)")
+	fs.StringVar(&cfg.version, "version", "",
+		"Minecraft version to speak (default: auto-detect by pinging the server)")
+	fs.BoolVar(&cfg.listVersions, "versions", false, "list supported versions and exit")
+	fs.StringVar(&cfg.control, "control", "",
+		"serve the remote-control HTTP API on this port or host:port (e.g. 8080). "+
+			"There is no authentication; bind to loopback unless the network is trusted")
+	fs.BoolVar(&cfg.noRespawn, "no-respawn", false,
+		"stay dead instead of respawning (for observing death handling)")
+	fs.BoolVar(&cfg.noIdlePos, "no-idle-position", false,
+		"stop reporting position while standing still (a real client sends ~20/s)")
+	fs.BoolVar(&cfg.trace, "trace", false, "log every clientbound packet id")
+	fs.BoolVar(&cfg.debug, "debug", false, "enable debug logging")
+	if err := fs.Parse(args); err != nil {goCover_0c8c214784e2__1[5] = 1;
+		return cfg, err
+	}
+	goCover_0c8c214784e2__1[4] = 1;return cfg, nil
+}
+
+func run(args []string, stderr *os.File) error {goCover_0c8c214784e2__2[0] = 29 ; goCover_0c8c214784e2__2[1] = goCover_0c8c214784e2_P ; goCover_0c8c214784e2__2[2] = 2 ; goCover_0c8c214784e2__2[3] = 1;
+	cfg, err := parseFlags(args, stderr)
+	if err != nil {goCover_0c8c214784e2__2[16] = 1;
+		return err
+	}
+
+	goCover_0c8c214784e2__2[4] = 1;if cfg.listVersions {goCover_0c8c214784e2__2[17] = 1;
+		fmt.Fprintln(stderr, strings.Join(protocol.Names(), "\n"))
+		return nil
+	}
+
+	goCover_0c8c214784e2__2[5] = 1;level := slog.LevelInfo
+	if cfg.debug {goCover_0c8c214784e2__2[18] = 1;
+		level = slog.LevelDebug
+	}
+	goCover_0c8c214784e2__2[6] = 1;log := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: level}))
+
+	opts := client.Options{
+		Addr:                cfg.addr,
+		Version:             cfg.version,
+		Username:            cfg.username,
+		DisableAutoRespawn:  cfg.noRespawn,
+		DisableIdlePosition: cfg.noIdlePos,
+		Logger:              log,
+	}
+	if cfg.trace {goCover_0c8c214784e2__2[19] = 1;
+		opts.OnPacket = func(state protocol.State, p protocol.Packet) {goCover_0c8c214784e2__2[20] = 1;
+			log.Debug("recv", "state", state.String(),
+				"id", fmt.Sprintf("0x%02x", p.ID), "bytes", len(p.Data))
+		}
+	}
+
+	goCover_0c8c214784e2__2[7] = 1;bot, err := client.New(opts)
+	if err != nil {goCover_0c8c214784e2__2[21] = 1;
+		return fmt.Errorf("configuration error: %w", err)
+	}
+
+	// Ctrl-C and SIGTERM should disconnect cleanly rather than leave the
+	// server holding a half-open player slot.
+	goCover_0c8c214784e2__2[8] = 1;ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	started := time.Now()
+	if err := bot.Connect(ctx); err != nil {goCover_0c8c214784e2__2[22] = 1;
+		return fmt.Errorf("connect failed: %w", err)
+	}
+	goCover_0c8c214784e2__2[9] = 1;defer func() {goCover_0c8c214784e2__2[23] = 1;
+		if err := bot.Close(); err != nil {goCover_0c8c214784e2__2[24] = 1;
+			log.Debug("close", "err", err)
+		}
+	}()
+
+	goCover_0c8c214784e2__2[10] = 1;runCtx := ctx
+	if cfg.hold > 0 {goCover_0c8c214784e2__2[25] = 1;
+		var cancel context.CancelFunc
+		runCtx, cancel = context.WithTimeout(ctx, cfg.hold)
+		defer cancel()
+	}
+
+	goCover_0c8c214784e2__2[11] = 1;if cfg.control != "" {goCover_0c8c214784e2__2[26] = 1;
+		// The control API writes packets while Run reads them. That is safe:
+		// the connection serialises writes internally.
+		go func() {goCover_0c8c214784e2__2[27] = 1;
+			if err := control.New(bot, log).Serve(runCtx, control.ParseAddr(cfg.control)); err != nil {goCover_0c8c214784e2__2[28] = 1;
+				log.Error("control api stopped", "err", err)
+			}
+		}()
+	}
+
+	goCover_0c8c214784e2__2[12] = 1;runErr := bot.Run(runCtx)
+
+	// A cancelled context is the success path when --hold expires: the bot
+	// stayed connected for the whole window without being kicked.
+	expected := ctx.Err() != nil || runCtx.Err() != nil
+	if runErr != nil && !expected {goCover_0c8c214784e2__2[29] = 1;
+		return fmt.Errorf("disconnected: %w", runErr)
+	}
+	goCover_0c8c214784e2__2[13] = 1;if runErr != nil {goCover_0c8c214784e2__2[30] = 1;
+		// Expected on a clean shutdown, but the reason still has to be visible:
+		// "stopped because the hold expired" and "stopped because the server
+		// hung up a moment earlier" look identical without it.
+		log.Info("run ended", "err", runErr, "elapsed", time.Since(started).Round(time.Millisecond))
+	}
+
+	goCover_0c8c214784e2__2[14] = 1;if !bot.Joined() {goCover_0c8c214784e2__2[31] = 1;
+		return errors.New("never received the play login packet")
+	}
+	goCover_0c8c214784e2__2[15] = 1;pos := bot.Position()
+	health, food := bot.Health()
+	log.Info("done",
+		"uuid", bot.UUID.String(),
+		"entity_id", bot.EntityID(),
+		"x", pos.X, "y", pos.Y, "z", pos.Z,
+		"health", health, "food", food,
+		"deaths", bot.Deaths(), "dead", bot.Dead())
+	return nil
+}

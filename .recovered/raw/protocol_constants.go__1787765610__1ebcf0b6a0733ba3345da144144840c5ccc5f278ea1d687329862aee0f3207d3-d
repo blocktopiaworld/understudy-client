@@ -1,0 +1,98 @@
+//line /home/smoca/work/blocktopia/blocktopia-client/protocol/constants.go:1:1
+package protocol
+
+// Protocol constants that are not version-specific.
+//
+// Unlike packet IDs, these are semantic values that Mojang has kept stable —
+// a dig status of 2 has meant "finish breaking" for many years. They live here
+// rather than in a generated version table because they are shared, and
+// duplicating them per version would invite the copies to drift.
+
+// State is a protocol state. The packet ID namespace is scoped to the state,
+// so 0x00 means different things in each — decoding without tracking state is
+// the classic way to misread a stream.
+type State int
+
+const (
+	StateHandshaking State = iota
+	StateLogin
+	StateConfiguration
+	StatePlay
+)
+
+func (s State) String() string {goCover_057b68bc3a18__49[0] = 6 ; goCover_057b68bc3a18__49[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__49[2] = 49 ; goCover_057b68bc3a18__49[3] = 1;
+	switch s {
+	case StateHandshaking:goCover_057b68bc3a18__49[5] = 1;
+		return "handshaking"
+	case StateLogin:goCover_057b68bc3a18__49[6] = 1;
+		return "login"
+	case StateConfiguration:goCover_057b68bc3a18__49[7] = 1;
+		return "configuration"
+	case StatePlay:goCover_057b68bc3a18__49[8] = 1;
+		return "play"
+	}
+	goCover_057b68bc3a18__49[4] = 1;return "unknown"
+}
+
+// ClientCommand action IDs, the argument to the client_command packet.
+const (
+	ClientCommandPerformRespawn int32 = 0
+	ClientCommandRequestStats   int32 = 1
+)
+
+// BlockDig statuses, the first field of the block_dig packet.
+//
+// Breaking a block is a *pair*: DigStart then DigFinish. The server measures
+// the interval against the expected break time for the block and the held
+// tool, so sending only one of them, or sending them too close together,
+// leaves the block standing with no error reported.
+const (
+	DigStart       int32 = 0
+	DigCancel      int32 = 1
+	DigFinish      int32 = 2
+	DigDropStack   int32 = 3
+	DigDropItem    int32 = 4
+	DigReleaseUse  int32 = 5
+	DigSwapOffhand int32 = 6
+)
+
+// Block faces, as used by dig and place. The face decides which side a block
+// is placed against, so it is not cosmetic.
+const (
+	FaceBottom int32 = 0 // -Y
+	FaceTop    int32 = 1 // +Y
+	FaceNorth  int32 = 2 // -Z
+	FaceSouth  int32 = 3 // +Z
+	FaceWest   int32 = 4 // -X
+	FaceEast   int32 = 5 // +X
+)
+
+// Hands.
+const (
+	MainHand int32 = 0
+	OffHand  int32 = 1
+)
+
+// MovementFlags bits, the trailing field of the movement packets.
+const (
+	MovementOnGround               uint8 = 1 << 0
+	MovementHasHorizontalCollision uint8 = 1 << 1
+)
+
+// PlayerInput bitflags. Sneaking moved here in 26.1 — entity_action no longer
+// carries start/stop_sneaking, so a client that looks for it there finds
+// nothing and silently never sneaks.
+const (
+	InputForward  uint8 = 1 << 0
+	InputBackward uint8 = 1 << 1
+	InputLeft     uint8 = 1 << 2
+	InputRight    uint8 = 1 << 3
+	InputJump     uint8 = 1 << 4
+	InputSneak    uint8 = 1 << 5
+	InputSprint   uint8 = 1 << 6
+)
+
+// RelativeMoveUnit converts the i16 deltas in the relative-move packets to
+// blocks. Entity movement is sent in 1/4096ths of a block, so treating the raw
+// value as blocks puts entities thousands of blocks away.
+const RelativeMoveUnit = 1.0 / 4096.0

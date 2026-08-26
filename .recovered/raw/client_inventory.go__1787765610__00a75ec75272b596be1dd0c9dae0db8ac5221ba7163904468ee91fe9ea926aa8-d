@@ -1,0 +1,502 @@
+//line /home/smoca/work/blocktopia/blocktopia-client/client/inventory.go:1:1
+package client
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+	"sync"
+
+	"github.com/blocktopia/client/protocol"
+)
+
+// Player inventory slot layout for window 0. These indices are what
+// window_click addresses, and they are not the same as the hotbar numbers a
+// player sees.
+const (
+	SlotCraftOutput  = 0
+	SlotCraftGridA   = 1 // 1..4
+	SlotArmorHead    = 5 // 5..8
+	SlotMainStart    = 9 // 9..35, the three upper rows
+	SlotMainEnd      = 35
+	SlotHotbarStart  = 36 // 36..44, shown to the player as 1..9
+	SlotHotbarEnd    = 44
+	SlotOffhand      = 45
+	PlayerWindowID   = 0
+	hotbarSlotCount  = 9
+	playerSlotsTotal = 46
+)
+
+// Container click modes. Mode 2 is the useful one here: it swaps a slot
+// directly with a hotbar slot, which moves an item into the hand without ever
+// picking it up onto the cursor.
+const (
+	ClickModeNormal     int32 = 0
+	ClickModeQuickMove  int32 = 1 // shift-click
+	ClickModeHotbarSwap int32 = 2
+	ClickModeDrop       int32 = 4
+)
+
+// ItemStack is one inventory slot's contents.
+type ItemStack struct {
+	Slot  int    `json:"slot"`
+	ID    int32  `json:"id"`
+	Name  string `json:"name"`
+	Count int32  `json:"count"`
+}
+
+// Empty reports whether the slot holds nothing.
+func (i ItemStack) Empty() bool {goCover_44b1aa629e35__94[0] = 1 ; goCover_44b1aa629e35__94[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__94[2] = 94 ; goCover_44b1aa629e35__94[3] = 1; return i.Count <= 0 }
+
+// inventory is the bot's view of its own slots.
+//
+// Contents arrive as whole-window snapshots (window_items) and single-slot
+// updates (set_slot). Both are tracked, because the harness gives items to a
+// bot at arbitrary times and a stale view would pick the wrong tool.
+type inventory struct {
+	mu      sync.RWMutex
+	slots   map[int]ItemStack
+	stateID int32
+	// truncated records that a window_items packet could not be fully decoded
+	// because an item carried data components. The slots before that point are
+	// still valid; the ones after are unknown.
+	truncated bool
+	// pickups tallies items collected off the ground, by item name.
+	pickups map[string]int32
+}
+
+func newInventory() *inventory {goCover_44b1aa629e35__95[0] = 1 ; goCover_44b1aa629e35__95[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__95[2] = 95 ; goCover_44b1aa629e35__95[3] = 1;
+	return &inventory{slots: make(map[int]ItemStack)}
+}
+
+func (inv *inventory) setSlot(slot int, item ItemStack) {goCover_44b1aa629e35__96[0] = 3 ; goCover_44b1aa629e35__96[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__96[2] = 96 ; goCover_44b1aa629e35__96[3] = 1;
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
+	if item.Empty() {goCover_44b1aa629e35__96[5] = 1;
+		delete(inv.slots, slot)
+		return
+	}
+	goCover_44b1aa629e35__96[4] = 1;inv.slots[slot] = item
+}
+
+func (inv *inventory) replaceAll(items []ItemStack, truncated bool) {goCover_44b1aa629e35__97[0] = 4 ; goCover_44b1aa629e35__97[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__97[2] = 97 ; goCover_44b1aa629e35__97[3] = 1;
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
+	clear(inv.slots)
+	for _, it := range items {goCover_44b1aa629e35__97[5] = 1;
+		if !it.Empty() {goCover_44b1aa629e35__97[6] = 1;
+			inv.slots[it.Slot] = it
+		}
+	}
+	goCover_44b1aa629e35__97[4] = 1;inv.truncated = truncated
+}
+
+func (inv *inventory) setStateID(id int32) {goCover_44b1aa629e35__98[0] = 1 ; goCover_44b1aa629e35__98[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__98[2] = 98 ; goCover_44b1aa629e35__98[3] = 1;
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
+	inv.stateID = id
+}
+
+func (inv *inventory) getStateID() int32 {goCover_44b1aa629e35__99[0] = 1 ; goCover_44b1aa629e35__99[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__99[2] = 99 ; goCover_44b1aa629e35__99[3] = 1;
+	inv.mu.RLock()
+	defer inv.mu.RUnlock()
+	return inv.stateID
+}
+
+func (inv *inventory) all() []ItemStack {goCover_44b1aa629e35__100[0] = 3 ; goCover_44b1aa629e35__100[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__100[2] = 100 ; goCover_44b1aa629e35__100[3] = 1;
+	inv.mu.RLock()
+	defer inv.mu.RUnlock()
+	out := make([]ItemStack, 0, len(inv.slots))
+	for _, it := range inv.slots {goCover_44b1aa629e35__100[5] = 1;
+		out = append(out, it)
+	}
+	goCover_44b1aa629e35__100[4] = 1;return out
+}
+
+// Inventory returns every non-empty slot the bot knows about.
+func (c *Client) Inventory() []ItemStack {goCover_44b1aa629e35__101[0] = 4 ; goCover_44b1aa629e35__101[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__101[2] = 101 ; goCover_44b1aa629e35__101[3] = 1;
+	items := c.inv.all()
+	// Stable order makes the HTTP output and any test assertion reproducible.
+	for i := 1; i < len(items); i++ {goCover_44b1aa629e35__101[5] = 1;
+		for j := i; j > 0 && items[j].Slot < items[j-1].Slot; j-- {goCover_44b1aa629e35__101[6] = 1;
+			items[j], items[j-1] = items[j-1], items[j]
+		}
+	}
+	goCover_44b1aa629e35__101[4] = 1;return items
+}
+
+// InventoryTruncated reports whether the last full-window snapshot could not be
+// decoded to the end. See the comment on inventory.truncated.
+func (c *Client) InventoryTruncated() bool {goCover_44b1aa629e35__102[0] = 1 ; goCover_44b1aa629e35__102[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__102[2] = 102 ; goCover_44b1aa629e35__102[3] = 1;
+	c.inv.mu.RLock()
+	defer c.inv.mu.RUnlock()
+	return c.inv.truncated
+}
+
+// FindItem returns the lowest-numbered slot holding an item, matching on name.
+// A bare name ("diamond_pickaxe") and a namespaced one both work, and a
+// suffix match is accepted so "pickaxe" finds "minecraft:diamond_pickaxe".
+func (c *Client) FindItem(name string) (ItemStack, bool) {goCover_44b1aa629e35__103[0] = 8 ; goCover_44b1aa629e35__103[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__103[2] = 103 ; goCover_44b1aa629e35__103[3] = 1;
+	want := name
+	if !strings.Contains(want, ":") {goCover_44b1aa629e35__103[6] = 1;
+		want = "minecraft:" + want
+	}
+	goCover_44b1aa629e35__103[4] = 1;var best ItemStack
+	found := false
+	for _, it := range c.Inventory() {goCover_44b1aa629e35__103[7] = 1;
+		exact := it.Name == want
+		fuzzy := strings.HasSuffix(it.Name, "_"+strings.TrimPrefix(name, "minecraft:"))
+		if !exact && !fuzzy {goCover_44b1aa629e35__103[9] = 1;
+			continue
+		}
+		// Prefer an exact match; otherwise take the lowest slot.
+		goCover_44b1aa629e35__103[8] = 1;if !found || (exact && best.Name != want) {goCover_44b1aa629e35__103[10] = 1;
+			best, found = it, true
+		}
+	}
+	goCover_44b1aa629e35__103[5] = 1;return best, found
+}
+
+// HoldItem puts a named item into the bot's hand, wherever it currently is.
+//
+// If the item is already on the hotbar this is just a slot selection. If it is
+// in the main inventory it is swapped onto the hotbar first — which is the
+// whole point, since a bot given a tool by `/give` has no control over where it
+// lands.
+func (c *Client) HoldItem(name string) (ItemStack, error) {goCover_44b1aa629e35__104[0] = 11 ; goCover_44b1aa629e35__104[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__104[2] = 104 ; goCover_44b1aa629e35__104[3] = 1;
+	if err := c.requireAlive("hold item"); err != nil {goCover_44b1aa629e35__104[8] = 1;
+		return ItemStack{}, err
+	}
+	goCover_44b1aa629e35__104[4] = 1;item, ok := c.FindItem(name)
+	if !ok {goCover_44b1aa629e35__104[9] = 1;
+		if c.InventoryTruncated() {goCover_44b1aa629e35__104[11] = 1;
+			return ItemStack{}, fmt.Errorf(
+				"client: %q not found, and the inventory view is incomplete "+
+					"(an item with data components stopped the scan)", name)
+		}
+		goCover_44b1aa629e35__104[10] = 1;return ItemStack{}, fmt.Errorf("client: no %q in inventory (%d slots known)", name, len(c.Inventory()))
+	}
+
+	goCover_44b1aa629e35__104[5] = 1;if item.Slot >= SlotHotbarStart && item.Slot <= SlotHotbarEnd {goCover_44b1aa629e35__104[12] = 1;
+		return item, c.SetHeldSlot(item.Slot - SlotHotbarStart)
+	}
+
+	// Swap it onto whichever hotbar slot is currently selected.
+	goCover_44b1aa629e35__104[6] = 1;hotbar := c.HeldSlot()
+	if err := c.clickSlot(item.Slot, int8(hotbar), ClickModeHotbarSwap); err != nil {goCover_44b1aa629e35__104[13] = 1;
+		return item, err
+	}
+	// The server will echo the moved slots back; update optimistically so an
+	// immediately following action sees the right thing.
+	goCover_44b1aa629e35__104[7] = 1;c.inv.setSlot(SlotHotbarStart+hotbar, ItemStack{
+		Slot: SlotHotbarStart + hotbar, ID: item.ID, Name: item.Name, Count: item.Count,
+	})
+	c.inv.setSlot(item.Slot, ItemStack{Slot: item.Slot})
+	return item, c.SetHeldSlot(hotbar)
+}
+
+// HeldItem returns what is currently in the bot's hand.
+func (c *Client) HeldItem() (ItemStack, bool) {goCover_44b1aa629e35__105[0] = 4 ; goCover_44b1aa629e35__105[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__105[2] = 105 ; goCover_44b1aa629e35__105[3] = 1;
+	for _, it := range c.Inventory() {goCover_44b1aa629e35__105[5] = 1;
+		if it.Slot == SlotHotbarStart+c.HeldSlot() {goCover_44b1aa629e35__105[6] = 1;
+			return it, true
+		}
+	}
+	goCover_44b1aa629e35__105[4] = 1;return ItemStack{}, false
+}
+
+// clickSlot sends a container click.
+//
+// changedSlots is deliberately sent empty and the cursor as absent. Those
+// fields are the client's *prediction* of the outcome; the server verifies
+// them against its own state and, on a mismatch, simply resends the authoritative
+// contents. For a test harness that resync is not a problem — it is the desired
+// behaviour, and it avoids having to compute the component hashes a populated
+// prediction would require.
+func (c *Client) clickSlot(slot int, button int8, mode int32) error {goCover_44b1aa629e35__106[0] = 3 ; goCover_44b1aa629e35__106[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__106[2] = 106 ; goCover_44b1aa629e35__106[3] = 1;
+	if c.v.Packets.SBPlayWindowClick == protocol.Absent {goCover_44b1aa629e35__106[5] = 1;
+		return errors.New("client: this version has no window_click packet")
+	}
+	goCover_44b1aa629e35__106[4] = 1;w := protocol.NewWriter(c.v.Packets.SBPlayWindowClick).
+		VarInt(PlayerWindowID).
+		VarInt(c.inv.getStateID()).
+		I16(int16(slot)).
+		I8(button).
+		VarInt(mode).
+		VarInt(0). // changedSlots: empty, let the server resync
+		Bool(false)
+	return c.conn.WritePacket(w.Bytes())
+}
+
+// readSlotFinal decodes an item stack that is the LAST field of its packet.
+//
+// This is the case that matters in practice. Components cannot be *skipped*
+// without knowing ~100 wire shapes, but they can be ignored outright when
+// nothing follows them — so a single-slot update decodes an enchanted item
+// perfectly well, while only a whole-inventory snapshot has to give up.
+//
+// That asymmetry is worth exploiting: a harness bot joins with an empty
+// inventory and receives its gear afterwards, one set_slot at a time.
+func readSlotFinal(v *protocol.Version, r *protocol.Reader) (ItemStack, error) {goCover_44b1aa629e35__107[0] = 7 ; goCover_44b1aa629e35__107[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__107[2] = 107 ; goCover_44b1aa629e35__107[3] = 1;
+	count := r.VarInt()
+	if err := r.Err(); err != nil {goCover_44b1aa629e35__107[7] = 1;
+		return ItemStack{}, err
+	}
+	goCover_44b1aa629e35__107[4] = 1;if count <= 0 {goCover_44b1aa629e35__107[8] = 1;
+		return ItemStack{}, nil
+	}
+	goCover_44b1aa629e35__107[5] = 1;id := r.VarInt()
+	if err := r.Err(); err != nil {goCover_44b1aa629e35__107[9] = 1;
+		return ItemStack{}, err
+	}
+	// Whatever components follow are the rest of the packet; drop them.
+	goCover_44b1aa629e35__107[6] = 1;return ItemStack{ID: id, Name: v.ItemName(id), Count: count}, nil
+}
+
+// readSlot decodes one item stack.
+//
+// Components are the catch. An item that carries them (a named tool, custom
+// damage, an enchantment) cannot be skipped without decoding every component
+// type — roughly a hundred distinct structures — so this reports that it could
+// not continue rather than guessing a length and desynchronising the rest of
+// the packet.
+func readSlot(v *protocol.Version, r *protocol.Reader) (ItemStack, error) {goCover_44b1aa629e35__108[0] = 13 ; goCover_44b1aa629e35__108[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__108[2] = 108 ; goCover_44b1aa629e35__108[3] = 1;
+	count := r.VarInt()
+	if err := r.Err(); err != nil {goCover_44b1aa629e35__108[10] = 1;
+		return ItemStack{}, err
+	}
+	goCover_44b1aa629e35__108[4] = 1;if count <= 0 {goCover_44b1aa629e35__108[11] = 1;
+		return ItemStack{}, nil
+	}
+	goCover_44b1aa629e35__108[5] = 1;id := r.VarInt()
+	added := r.VarInt()
+	removed := r.VarInt()
+	if err := r.Err(); err != nil {goCover_44b1aa629e35__108[12] = 1;
+		return ItemStack{}, err
+	}
+	goCover_44b1aa629e35__108[6] = 1;if added > 0 {goCover_44b1aa629e35__108[13] = 1;
+		return ItemStack{}, fmt.Errorf("item %s carries %d data components, which this client cannot skip",
+			v.ItemName(id), added)
+	}
+	// Removed components are just a list of type IDs, which *can* be skipped.
+	goCover_44b1aa629e35__108[7] = 1;for i := int32(0); i < removed; i++ {goCover_44b1aa629e35__108[14] = 1;
+		r.VarInt()
+	}
+	goCover_44b1aa629e35__108[8] = 1;if err := r.Err(); err != nil {goCover_44b1aa629e35__108[15] = 1;
+		return ItemStack{}, err
+	}
+	goCover_44b1aa629e35__108[9] = 1;return ItemStack{ID: id, Name: v.ItemName(id), Count: count}, nil
+}
+
+// handleInventoryPacket decodes the inventory packets. Returns false if the
+// packet was not one of them.
+func (c *Client) handleInventoryPacket(p protocol.Packet) (bool, error) {goCover_44b1aa629e35__109[0] = 28 ; goCover_44b1aa629e35__109[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__109[2] = 109 ; goCover_44b1aa629e35__109[3] = 1;
+	switch p.ID {
+	case c.v.Packets.CBPlayWindowItems:goCover_44b1aa629e35__109[5] = 1;
+		r := p.Reader()
+		windowID := r.VarInt()
+		stateID := r.VarInt()
+		n := r.VarInt()
+		if err := r.Err(); err != nil {goCover_44b1aa629e35__109[19] = 1;
+			return true, err
+		}
+		goCover_44b1aa629e35__109[6] = 1;c.inv.setStateID(stateID)
+		if windowID != PlayerWindowID {goCover_44b1aa629e35__109[20] = 1;
+			return true, nil // a chest or similar; not tracked
+		}
+
+		goCover_44b1aa629e35__109[7] = 1;items := make([]ItemStack, 0, n)
+		truncated := false
+		for i := int32(0); i < n; i++ {goCover_44b1aa629e35__109[21] = 1;
+			item, err := readSlot(c.v, r)
+			if err != nil {goCover_44b1aa629e35__109[23] = 1;
+				// Keep what was decoded. Packets are length-framed, so an
+				// abandoned parse costs this packet's tail and nothing else —
+				// the stream stays in sync.
+				c.log.Debug("inventory scan stopped early", "slot", i, "err", err)
+				truncated = true
+				break
+			}
+			goCover_44b1aa629e35__109[22] = 1;item.Slot = int(i)
+			items = append(items, item)
+		}
+		goCover_44b1aa629e35__109[8] = 1;c.inv.replaceAll(items, truncated)
+		return true, nil
+
+	case c.v.Packets.CBPlaySetSlot:goCover_44b1aa629e35__109[9] = 1;
+		r := p.Reader()
+		windowID := r.VarInt()
+		stateID := r.VarInt()
+		slot := r.I16()
+		if err := r.Err(); err != nil {goCover_44b1aa629e35__109[24] = 1;
+			return true, err
+		}
+		goCover_44b1aa629e35__109[10] = 1;c.inv.setStateID(stateID)
+		if windowID != PlayerWindowID {goCover_44b1aa629e35__109[25] = 1;
+			return true, nil
+		}
+		// The item is the final field, so components need not be skipped.
+		goCover_44b1aa629e35__109[11] = 1;item, err := readSlotFinal(c.v, r)
+		if err != nil {goCover_44b1aa629e35__109[26] = 1;
+			c.log.Debug("could not decode slot update", "slot", slot, "err", err)
+			return true, nil
+		}
+		goCover_44b1aa629e35__109[12] = 1;item.Slot = int(slot)
+		c.inv.setSlot(int(slot), item)
+		return true, nil
+
+	case c.v.Packets.CBPlayCollect:goCover_44b1aa629e35__109[13] = 1;
+		r := p.Reader()
+		collected := r.VarInt()
+		collector := r.VarInt()
+		count := r.VarInt()
+		if err := r.Err(); err != nil {goCover_44b1aa629e35__109[27] = 1;
+			return true, err
+		}
+		// Only our own pickups matter; the server broadcasts everyone's.
+		goCover_44b1aa629e35__109[14] = 1;if collector != c.EntityID() {goCover_44b1aa629e35__109[28] = 1;
+			return true, nil
+		}
+		// The collect packet identifies the item *entity*, not what is inside
+		// it — every dropped stack is a "minecraft:item". Naming the contents
+		// would mean decoding entity metadata, which this client does not do,
+		// so the tally is deliberately by entity and the count is the useful
+		// part: it answers "did the bot pick anything up?", which is the
+		// question that matters when stray drops would corrupt a hold count.
+		// What was picked up is visible in the inventory delta, and the
+		// authoritative per-item numbers are the server's picked_up stats.
+		goCover_44b1aa629e35__109[15] = 1;_ = collected
+		c.inv.recordPickup("item", count)
+		c.log.Debug("picked up", "count", count, "entity", collected)
+		return true, nil
+
+	case c.v.Packets.CBPlayHeldItemSlot:goCover_44b1aa629e35__109[16] = 1;
+		r := p.Reader()
+		slot := r.VarInt()
+		if err := r.Err(); err != nil {goCover_44b1aa629e35__109[29] = 1;
+			return true, err
+		}
+		goCover_44b1aa629e35__109[17] = 1;if slot >= 0 && slot < hotbarSlotCount {goCover_44b1aa629e35__109[30] = 1;
+			c.mu.Lock()
+			c.heldSlot = int(slot)
+			c.mu.Unlock()
+		}
+		goCover_44b1aa629e35__109[18] = 1;return true, nil
+	}
+	goCover_44b1aa629e35__109[4] = 1;return false, nil
+}
+
+// StorageSlots is how many slots the plugin's inventory-hold scan counts on
+// Paper: the 27 main slots plus the 9 hotbar slots. Armour and the offhand are
+// deliberately excluded — see CountItemStorage.
+const StorageSlots = 36
+
+// CountItem totals an item across every slot the bot knows about, including
+// the offhand and armour.
+func (c *Client) CountItem(name string) int32 {goCover_44b1aa629e35__110[0] = 6 ; goCover_44b1aa629e35__110[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__110[2] = 110 ; goCover_44b1aa629e35__110[3] = 1;
+	want := name
+	if !strings.Contains(want, ":") {goCover_44b1aa629e35__110[6] = 1;
+		want = "minecraft:" + want
+	}
+	goCover_44b1aa629e35__110[4] = 1;var total int32
+	for _, it := range c.Inventory() {goCover_44b1aa629e35__110[7] = 1;
+		if it.Name == want {goCover_44b1aa629e35__110[8] = 1;
+			total += it.Count
+		}
+	}
+	goCover_44b1aa629e35__110[5] = 1;return total
+}
+
+// CountItemStorage totals an item across the 36 *storage* slots only.
+//
+// The distinction is not academic. The plugin's Paper implementation scans
+// getStorageContents() (36 slots) while its Fabric one scans the whole
+// container (41, including armour and the offhand), so an item held in the
+// offhand counts on one platform and not the other. Having both numbers is
+// what lets a test detect that divergence instead of inheriting it.
+func (c *Client) CountItemStorage(name string) int32 {goCover_44b1aa629e35__111[0] = 8 ; goCover_44b1aa629e35__111[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__111[2] = 111 ; goCover_44b1aa629e35__111[3] = 1;
+	want := name
+	if !strings.Contains(want, ":") {goCover_44b1aa629e35__111[6] = 1;
+		want = "minecraft:" + want
+	}
+	goCover_44b1aa629e35__111[4] = 1;var total int32
+	for _, it := range c.Inventory() {goCover_44b1aa629e35__111[7] = 1;
+		if it.Name != want {goCover_44b1aa629e35__111[9] = 1;
+			continue
+		}
+		goCover_44b1aa629e35__111[8] = 1;if it.Slot >= SlotMainStart && it.Slot <= SlotHotbarEnd {goCover_44b1aa629e35__111[10] = 1;
+			total += it.Count
+		}
+	}
+	goCover_44b1aa629e35__111[5] = 1;return total
+}
+
+// FreeStorageSlots reports how many of the 36 storage slots are empty.
+func (c *Client) FreeStorageSlots() int {goCover_44b1aa629e35__112[0] = 4 ; goCover_44b1aa629e35__112[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__112[2] = 112 ; goCover_44b1aa629e35__112[3] = 1;
+	used := 0
+	for _, it := range c.Inventory() {goCover_44b1aa629e35__112[5] = 1;
+		if it.Slot >= SlotMainStart && it.Slot <= SlotHotbarEnd && !it.Empty() {goCover_44b1aa629e35__112[6] = 1;
+			used++
+		}
+	}
+	goCover_44b1aa629e35__112[4] = 1;return StorageSlots - used
+}
+
+// SlotsNeeded reports how many slots a quantity of an item would occupy, and
+// whether it can fit in a player's storage at all.
+//
+// Worth asking before building a scenario: "hold 2304 dirt" needs all 36 slots,
+// which leaves no room for the tool the bot might otherwise be carrying.
+func (c *Client) SlotsNeeded(name string, count int32) (slots int, fits bool) {goCover_44b1aa629e35__113[0] = 3 ; goCover_44b1aa629e35__113[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__113[2] = 113 ; goCover_44b1aa629e35__113[3] = 1;
+	stack := c.v.StackSizeOf(name)
+	if stack <= 0 {goCover_44b1aa629e35__113[5] = 1;
+		stack = 64
+	}
+	goCover_44b1aa629e35__113[4] = 1;slots = int((count + stack - 1) / stack)
+	return slots, slots <= StorageSlots
+}
+
+// Pickup records one item the bot collected off the ground.
+type Pickup struct {
+	// Item is the entity's type name if it was still tracked when collected.
+	// Item entities are frequently collected the same tick they spawn, so this
+	// can legitimately be unknown.
+	Item  string `json:"item"`
+	Count int32  `json:"count"`
+}
+
+// PickupsSeen returns how many items the bot has collected off the ground,
+// and the per-item tally.
+//
+// Worth watching in both directions. Several goal families count picked_up
+// stats, so pickups are sometimes the point — but a bot that wanders over its
+// own mining drops also inflates counts it was not meant to touch and quietly
+// changes the inventory a hold-count goal is measuring. Either way the harness
+// should be able to see it happen rather than infer it afterwards.
+func (c *Client) PickupsSeen() (total int32, byItem map[string]int32) {goCover_44b1aa629e35__114[0] = 3 ; goCover_44b1aa629e35__114[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__114[2] = 114 ; goCover_44b1aa629e35__114[3] = 1;
+	c.inv.mu.RLock()
+	defer c.inv.mu.RUnlock()
+	out := make(map[string]int32, len(c.inv.pickups))
+	for k, v := range c.inv.pickups {goCover_44b1aa629e35__114[5] = 1;
+		out[k] = v
+		total += v
+	}
+	goCover_44b1aa629e35__114[4] = 1;return total, out
+}
+
+// ResetPickups clears the pickup tally, so a scenario can measure a window
+// rather than a session.
+func (c *Client) ResetPickups() {goCover_44b1aa629e35__115[0] = 1 ; goCover_44b1aa629e35__115[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__115[2] = 115 ; goCover_44b1aa629e35__115[3] = 1;
+	c.inv.mu.Lock()
+	defer c.inv.mu.Unlock()
+	clear(c.inv.pickups)
+}
+
+func (inv *inventory) recordPickup(item string, count int32) {goCover_44b1aa629e35__116[0] = 3 ; goCover_44b1aa629e35__116[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__116[2] = 116 ; goCover_44b1aa629e35__116[3] = 1;
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
+	if inv.pickups == nil {goCover_44b1aa629e35__116[5] = 1;
+		inv.pickups = make(map[string]int32)
+	}
+	goCover_44b1aa629e35__116[4] = 1;inv.pickups[item] += count
+}

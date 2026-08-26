@@ -1,0 +1,178 @@
+//line /home/smoca/work/blocktopia/blocktopia-client/protocol/conn.go:1:1
+package protocol
+
+import (
+	"bufio"
+	"bytes"
+	"compress/zlib"
+	"fmt"
+	"io"
+	"net"
+	"sync"
+	"time"
+)
+
+// MaxPacketSize bounds a single frame. The server should never send anything
+// close to this; the cap exists so a desynced length prefix fails fast instead
+// of making the client allocate gigabytes.
+const MaxPacketSize = 1 << 23 // 8 MiB
+
+// CompressionDisabled is the threshold value meaning "no compression yet".
+// The server switches compression on mid-login by sending set_compression, so
+// this is the starting state of every connection.
+const CompressionDisabled = -1
+
+// Packet is one decoded frame: its ID and its payload with the ID stripped.
+type Packet struct {
+	ID   int32
+	Data []byte
+}
+
+// Reader returns a Reader positioned at the first field of the payload.
+func (p Packet) Reader() *Reader {goCover_057b68bc3a18__40[0] = 1 ; goCover_057b68bc3a18__40[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__40[2] = 40 ; goCover_057b68bc3a18__40[3] = 1; return NewReader(p.Data) }
+
+// Conn is a framed Minecraft connection.
+//
+// It deliberately knows nothing about packet semantics — only how to get
+// bytes on and off the wire. Reads are single-threaded by contract (one read
+// loop), but writes are mutex-guarded because keep-alive and command traffic
+// are generated from different goroutines.
+type Conn struct {
+	conn net.Conn
+	br   *bufio.Reader
+
+	// threshold is the compression threshold in bytes, or CompressionDisabled.
+	// Payloads at or above it are zlib-compressed; smaller ones travel raw
+	// with a 0 data-length marker.
+	threshold int
+
+	writeMu sync.Mutex
+}
+
+// Dial opens a TCP connection to a Minecraft server.
+func Dial(addr string, timeout time.Duration) (*Conn, error) {goCover_057b68bc3a18__41[0] = 5 ; goCover_057b68bc3a18__41[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__41[2] = 41 ; goCover_057b68bc3a18__41[3] = 1;
+	c, err := net.DialTimeout("tcp", addr, timeout)
+	if err != nil {goCover_057b68bc3a18__41[6] = 1;
+		return nil, fmt.Errorf("protocol: dial %s: %w", addr, err)
+	}
+	// Latency matters more than throughput here: a dig sequence is a handful
+	// of tiny packets whose spacing the server measures, and Nagle would
+	// coalesce them into the wrong timing.
+	goCover_057b68bc3a18__41[4] = 1;if tcp, ok := c.(*net.TCPConn); ok {goCover_057b68bc3a18__41[7] = 1;
+		_ = tcp.SetNoDelay(true)
+	}
+	goCover_057b68bc3a18__41[5] = 1;return newConn(c), nil
+}
+
+// newConn wraps an already-established connection. Split out from Dial so the
+// framing layer can be exercised over an in-memory pipe.
+func newConn(c net.Conn) *Conn {goCover_057b68bc3a18__42[0] = 1 ; goCover_057b68bc3a18__42[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__42[2] = 42 ; goCover_057b68bc3a18__42[3] = 1;
+	return &Conn{conn: c, br: bufio.NewReaderSize(c, 1<<16), threshold: CompressionDisabled}
+}
+
+// SetCompressionThreshold enables (>= 0) or disables (< 0) compression.
+func (c *Conn) SetCompressionThreshold(t int) {goCover_057b68bc3a18__43[0] = 1 ; goCover_057b68bc3a18__43[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__43[2] = 43 ; goCover_057b68bc3a18__43[3] = 1;
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	c.threshold = t
+}
+
+// SetReadDeadline bounds how long the next read may block.
+func (c *Conn) SetReadDeadline(t time.Time) error {goCover_057b68bc3a18__44[0] = 1 ; goCover_057b68bc3a18__44[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__44[2] = 44 ; goCover_057b68bc3a18__44[3] = 1; return c.conn.SetReadDeadline(t) }
+
+// Close closes the underlying socket.
+func (c *Conn) Close() error {goCover_057b68bc3a18__45[0] = 1 ; goCover_057b68bc3a18__45[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__45[2] = 45 ; goCover_057b68bc3a18__45[3] = 1; return c.conn.Close() }
+
+// RemoteAddr returns the server address.
+func (c *Conn) RemoteAddr() net.Addr {goCover_057b68bc3a18__46[0] = 1 ; goCover_057b68bc3a18__46[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__46[2] = 46 ; goCover_057b68bc3a18__46[3] = 1; return c.conn.RemoteAddr() }
+
+// ReadPacket reads one frame.
+//
+// Uncompressed framing is [VarInt length][VarInt id][payload]. Once
+// compression is on it becomes [VarInt packetLength][VarInt dataLength][body],
+// where dataLength == 0 means the body is stored raw (it was under the
+// threshold) and any other value is the *decompressed* size of a zlib body.
+// Treating a 0 marker as a zlib stream is the classic bug here, so the two
+// cases are handled explicitly.
+func (c *Conn) ReadPacket() (Packet, error) {goCover_057b68bc3a18__47[0] = 21 ; goCover_057b68bc3a18__47[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__47[2] = 47 ; goCover_057b68bc3a18__47[3] = 1;
+	length, err := ReadVarInt(c.br)
+	if err != nil {goCover_057b68bc3a18__47[9] = 1;
+		return Packet{}, err
+	}
+	goCover_057b68bc3a18__47[4] = 1;if length < 0 || int(length) > MaxPacketSize {goCover_057b68bc3a18__47[10] = 1;
+		return Packet{}, fmt.Errorf("protocol: frame length %d out of range", length)
+	}
+
+	goCover_057b68bc3a18__47[5] = 1;frame := make([]byte, length)
+	if _, err := io.ReadFull(c.br, frame); err != nil {goCover_057b68bc3a18__47[11] = 1;
+		return Packet{}, fmt.Errorf("protocol: read frame: %w", err)
+	}
+
+	goCover_057b68bc3a18__47[6] = 1;c.writeMu.Lock()
+	threshold := c.threshold
+	c.writeMu.Unlock()
+
+	if threshold >= 0 {goCover_057b68bc3a18__47[12] = 1;
+		fr := NewReader(frame)
+		dataLength := fr.VarInt()
+		if err := fr.Err(); err != nil {goCover_057b68bc3a18__47[15] = 1;
+			return Packet{}, err
+		}
+		goCover_057b68bc3a18__47[13] = 1;body := fr.Remaining()
+		if dataLength != 0 {goCover_057b68bc3a18__47[16] = 1;
+			if int(dataLength) > MaxPacketSize {goCover_057b68bc3a18__47[20] = 1;
+				return Packet{}, fmt.Errorf("protocol: decompressed length %d out of range", dataLength)
+			}
+			goCover_057b68bc3a18__47[17] = 1;zr, err := zlib.NewReader(bytes.NewReader(body))
+			if err != nil {goCover_057b68bc3a18__47[21] = 1;
+				return Packet{}, fmt.Errorf("protocol: zlib open: %w", err)
+			}
+			goCover_057b68bc3a18__47[18] = 1;defer zr.Close()
+			out := make([]byte, dataLength)
+			if _, err := io.ReadFull(zr, out); err != nil {goCover_057b68bc3a18__47[22] = 1;
+				return Packet{}, fmt.Errorf("protocol: zlib read: %w", err)
+			}
+			goCover_057b68bc3a18__47[19] = 1;body = out
+		}
+		goCover_057b68bc3a18__47[14] = 1;frame = body
+	}
+
+	goCover_057b68bc3a18__47[7] = 1;pr := NewReader(frame)
+	id := pr.VarInt()
+	if err := pr.Err(); err != nil {goCover_057b68bc3a18__47[23] = 1;
+		return Packet{}, err
+	}
+	goCover_057b68bc3a18__47[8] = 1;return Packet{ID: id, Data: pr.Remaining()}, nil
+}
+
+// WritePacket writes an encoded payload (which already begins with the packet
+// ID VarInt) as one frame.
+func (c *Conn) WritePacket(payload []byte) error {goCover_057b68bc3a18__48[0] = 12 ; goCover_057b68bc3a18__48[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__48[2] = 48 ; goCover_057b68bc3a18__48[3] = 1;
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+
+	var frame []byte
+	if c.threshold < 0 {goCover_057b68bc3a18__48[6] = 1;
+		frame = payload
+	} else{ goCover_057b68bc3a18__48[7] = 1;if len(payload) < c.threshold {goCover_057b68bc3a18__48[8] = 1;
+		// Under the threshold: a 0 data-length marker, then the raw payload.
+		frame = append(AppendVarInt(nil, 0), payload...)
+	} else{ goCover_057b68bc3a18__48[9] = 1;{
+		var zbuf bytes.Buffer
+		zw := zlib.NewWriter(&zbuf)
+		if _, err := zw.Write(payload); err != nil {goCover_057b68bc3a18__48[12] = 1;
+			return fmt.Errorf("protocol: zlib write: %w", err)
+		}
+		goCover_057b68bc3a18__48[10] = 1;if err := zw.Close(); err != nil {goCover_057b68bc3a18__48[13] = 1;
+			return fmt.Errorf("protocol: zlib close: %w", err)
+		}
+		goCover_057b68bc3a18__48[11] = 1;frame = append(AppendVarInt(nil, int32(len(payload))), zbuf.Bytes()...)
+	}}}
+
+	goCover_057b68bc3a18__48[4] = 1;out := AppendVarInt(nil, int32(len(frame)))
+	out = append(out, frame...)
+	if _, err := c.conn.Write(out); err != nil {goCover_057b68bc3a18__48[14] = 1;
+		return fmt.Errorf("protocol: write: %w", err)
+	}
+	goCover_057b68bc3a18__48[5] = 1;return nil
+}

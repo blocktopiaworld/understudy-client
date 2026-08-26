@@ -1,0 +1,350 @@
+//line /home/smoca/work/blocktopia/blocktopia-client/client/world.go:1:1
+package client
+
+import (
+	"context"
+	"math"
+	"sync"
+	"time"
+
+	"github.com/blocktopia/client/protocol"
+)
+
+// chunkKey identifies a chunk column.
+type chunkKey struct{ X, Z int32 }
+
+// world is the bot's view of loaded terrain.
+//
+// It exists to answer one question cheaply and exactly: what block is at this
+// coordinate? Everything the bot could not previously do for itself — find the
+// floor, notice it is underwater, confirm a block actually broke — reduces to
+// that.
+type world struct {
+	mu     sync.RWMutex
+	chunks map[chunkKey]*protocol.ChunkColumn
+}
+
+func newWorld() *world {goCover_44b1aa629e35__137[0] = 1 ; goCover_44b1aa629e35__137[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__137[2] = 137 ; goCover_44b1aa629e35__137[3] = 1;
+	return &world{chunks: make(map[chunkKey]*protocol.ChunkColumn)}
+}
+
+func (w *world) store(c *protocol.ChunkColumn) {goCover_44b1aa629e35__138[0] = 1 ; goCover_44b1aa629e35__138[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__138[2] = 138 ; goCover_44b1aa629e35__138[3] = 1;
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.chunks[chunkKey{c.X, c.Z}] = c
+}
+
+func (w *world) drop(x, z int32) {goCover_44b1aa629e35__139[0] = 1 ; goCover_44b1aa629e35__139[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__139[2] = 139 ; goCover_44b1aa629e35__139[3] = 1;
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	delete(w.chunks, chunkKey{x, z})
+}
+
+func (w *world) reset() {goCover_44b1aa629e35__140[0] = 1 ; goCover_44b1aa629e35__140[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__140[2] = 140 ; goCover_44b1aa629e35__140[3] = 1;
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	clear(w.chunks)
+}
+
+func (w *world) loaded() int {goCover_44b1aa629e35__141[0] = 1 ; goCover_44b1aa629e35__141[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__141[2] = 141 ; goCover_44b1aa629e35__141[3] = 1;
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	return len(w.chunks)
+}
+
+// blockState returns the state at world coordinates, or air if the chunk is
+// not loaded.
+//
+// Arithmetic shift, not division: dividing a negative coordinate by 16 rounds
+// towards zero and lands on the wrong chunk for every negative coordinate.
+func (w *world) blockState(x, y, z int32) int32 {goCover_44b1aa629e35__142[0] = 1 ; goCover_44b1aa629e35__142[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__142[2] = 142 ; goCover_44b1aa629e35__142[3] = 1;
+	w.mu.RLock()
+	column := w.chunks[chunkKey{x >> 4, z >> 4}]
+	w.mu.RUnlock()
+	return column.BlockState(x, y, z)
+}
+
+func (w *world) setBlockState(x, y, z, state int32) {goCover_44b1aa629e35__143[0] = 1 ; goCover_44b1aa629e35__143[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__143[2] = 143 ; goCover_44b1aa629e35__143[3] = 1;
+	w.mu.RLock()
+	column := w.chunks[chunkKey{x >> 4, z >> 4}]
+	w.mu.RUnlock()
+	column.SetBlockState(x, y, z, state)
+}
+
+// hasChunk reports whether the column covering a coordinate is loaded. Callers
+// must check this before trusting an "air" answer, since an unloaded chunk is
+// indistinguishable from empty space.
+func (w *world) hasChunk(x, z int32) bool {goCover_44b1aa629e35__144[0] = 1 ; goCover_44b1aa629e35__144[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__144[2] = 144 ; goCover_44b1aa629e35__144[3] = 1;
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	_, ok := w.chunks[chunkKey{x >> 4, z >> 4}]
+	return ok
+}
+
+// BlockAt returns the block state at world coordinates.
+func (c *Client) BlockAt(x, y, z int32) int32 {goCover_44b1aa629e35__145[0] = 1 ; goCover_44b1aa629e35__145[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__145[2] = 145 ; goCover_44b1aa629e35__145[3] = 1; return c.world.blockState(x, y, z) }
+
+// ChunkLoaded reports whether terrain covering a coordinate is known.
+func (c *Client) ChunkLoaded(x, z int32) bool {goCover_44b1aa629e35__146[0] = 1 ; goCover_44b1aa629e35__146[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__146[2] = 146 ; goCover_44b1aa629e35__146[3] = 1; return c.world.hasChunk(x, z) }
+
+// LoadedChunks returns how many chunk columns are currently held.
+func (c *Client) LoadedChunks() int {goCover_44b1aa629e35__147[0] = 1 ; goCover_44b1aa629e35__147[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__147[2] = 147 ; goCover_44b1aa629e35__147[3] = 1; return c.world.loaded() }
+
+// IsSolidAt reports whether the block at a coordinate blocks movement.
+func (c *Client) IsSolidAt(x, y, z int32) bool {goCover_44b1aa629e35__148[0] = 1 ; goCover_44b1aa629e35__148[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__148[2] = 148 ; goCover_44b1aa629e35__148[3] = 1;
+	return c.v.IsSolid(c.world.blockState(x, y, z))
+}
+
+// IsTargetableAt reports whether the crosshair would stop on this block —
+// true for cobweb, crops and torches, which IsSolidAt reports as empty.
+func (c *Client) IsTargetableAt(x, y, z int32) bool {goCover_44b1aa629e35__149[0] = 1 ; goCover_44b1aa629e35__149[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__149[2] = 149 ; goCover_44b1aa629e35__149[3] = 1;
+	return c.v.IsTargetable(c.world.blockState(x, y, z))
+}
+
+// Support describes what a bot is standing in or on.
+type Support struct {
+	// GroundY is the Y coordinate the bot's feet rest at.
+	GroundY float64
+	// Found is false when no floor was located within the search depth.
+	Found bool
+	// InWater is true when the landing point is water rather than solid ground.
+	InWater bool
+	// InLava is true when the landing point is lava.
+	InLava bool
+}
+
+// maxGroundSearch bounds the downward scan. Deeper than the tallest possible
+// drop from the build limit to the void floor.
+const maxGroundSearch = 512
+
+// FindGround scans downward for the first thing that would stop a fall.
+//
+// Water counts as a stop and is reported separately, because it stops a fall
+// *differently*: it cancels fall damage entirely, and then drowns anything that
+// stays under. A bot that treats water as empty space falls through it like a
+// stone and dies at the bottom.
+//
+// Returns Found == false if the terrain is not loaded or nothing was hit,
+// which callers must not confuse with "the void": an unloaded chunk reads as
+// air everywhere.
+func (c *Client) FindGround(x, y, z int32) Support {goCover_44b1aa629e35__150[0] = 8 ; goCover_44b1aa629e35__150[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__150[2] = 150 ; goCover_44b1aa629e35__150[3] = 1;
+	if !c.world.hasChunk(x, z) {goCover_44b1aa629e35__150[6] = 1;
+		return Support{}
+	}
+	goCover_44b1aa629e35__150[4] = 1;for probe := y; probe > y-maxGroundSearch; probe-- {goCover_44b1aa629e35__150[7] = 1;
+		state := c.world.blockState(x, probe, z)
+		switch {
+		case c.v.IsWater(state):goCover_44b1aa629e35__150[8] = 1;
+			// Feet go *inside* the top water block, not on top of it. Water
+			// only cancels fall damage once the player is actually in it, so
+			// stopping one block high lands the bot on "air above water" and
+			// the server charges full fall damage — which is exactly the bug
+			// this looks like it is avoiding.
+			return Support{GroundY: float64(probe), Found: true, InWater: true}
+		case c.v.IsLava(state):goCover_44b1aa629e35__150[9] = 1;
+			return Support{GroundY: float64(probe + 1), Found: true, InLava: true}
+		case c.v.IsSolid(state):goCover_44b1aa629e35__150[10] = 1;
+			return Support{GroundY: float64(probe + 1), Found: true}
+		}
+	}
+	goCover_44b1aa629e35__150[5] = 1;return Support{}
+}
+
+// GroundBelow finds what the bot is currently standing over.
+func (c *Client) GroundBelow() Support {goCover_44b1aa629e35__151[0] = 1 ; goCover_44b1aa629e35__151[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__151[2] = 151 ; goCover_44b1aa629e35__151[3] = 1;
+	pos := c.Position()
+	// The block containing the feet: floor(), not truncation, or every
+	// negative coordinate is off by one.
+	x := int32(math.Floor(pos.X))
+	z := int32(math.Floor(pos.Z))
+	y := int32(math.Floor(pos.Y))
+	// Start the scan one below the feet — the block the bot occupies is the
+	// one it is standing *in*, not standing on.
+	return c.FindGround(x, y-1, z)
+}
+
+// Submerged reports whether the bot's head is inside water, which is the
+// condition that drowns it.
+func (c *Client) Submerged() bool {goCover_44b1aa629e35__152[0] = 1 ; goCover_44b1aa629e35__152[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__152[2] = 152 ; goCover_44b1aa629e35__152[3] = 1;
+	pos := c.Position()
+	x := int32(math.Floor(pos.X))
+	z := int32(math.Floor(pos.Z))
+	// Eyes sit ~1.62 above the feet; the head block is one above the feet.
+	head := int32(math.Floor(pos.Y + 1.0))
+	return c.v.IsWater(c.world.blockState(x, head, z))
+}
+
+// WaterSurfaceAbove finds the Y at which the bot's head would clear the water,
+// scanning up from its current position. Returns false if no surface is found.
+func (c *Client) WaterSurfaceAbove() (float64, bool) {goCover_44b1aa629e35__153[0] = 4 ; goCover_44b1aa629e35__153[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__153[2] = 153 ; goCover_44b1aa629e35__153[3] = 1;
+	pos := c.Position()
+	x := int32(math.Floor(pos.X))
+	z := int32(math.Floor(pos.Z))
+	start := int32(math.Floor(pos.Y))
+	for probe := start; probe < start+maxGroundSearch; probe++ {goCover_44b1aa629e35__153[5] = 1;
+		if !c.v.IsWater(c.world.blockState(x, probe+1, z)) {goCover_44b1aa629e35__153[6] = 1;
+			return float64(probe), true
+		}
+	}
+	goCover_44b1aa629e35__153[4] = 1;return 0, false
+}
+
+// maxChunksPerTick is the absorption rate reported to the server. Vanilla
+// clamps this server-side, so asking high simply means "send them as fast as
+// you are willing to".
+const maxChunksPerTick = 64.0
+
+// chunkWaitTimeout bounds how long to wait for terrain after a teleport.
+// Generous, because the alternative to waiting is acting on a world the bot
+// cannot see; if it expires the caller falls back to the imprecise path rather
+// than failing.
+const chunkWaitTimeout = 5 * time.Second
+
+// waitForChunk blocks until the terrain under the bot is loaded, or the
+// timeout expires. Reports whether the chunk arrived.
+//
+// Chunks trail a teleport by a noticeable margin, and an unloaded chunk reads
+// as air everywhere — so acting immediately after a teleport means acting on a
+// world that looks empty.
+func (c *Client) waitForChunk(ctx context.Context, timeout time.Duration) bool {goCover_44b1aa629e35__154[0] = 8 ; goCover_44b1aa629e35__154[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__154[2] = 154 ; goCover_44b1aa629e35__154[3] = 1;
+	pos := c.Position()
+	x := int32(math.Floor(pos.X))
+	z := int32(math.Floor(pos.Z))
+	if c.world.hasChunk(x, z) {goCover_44b1aa629e35__154[5] = 1;
+		return true
+	}
+
+	goCover_44b1aa629e35__154[4] = 1;ticker := time.NewTicker(25 * time.Millisecond)
+	defer ticker.Stop()
+	deadline := time.After(timeout)
+	for {goCover_44b1aa629e35__154[6] = 1;
+		select {
+		case <-ctx.Done():goCover_44b1aa629e35__154[7] = 1;
+			return false
+		case <-deadline:goCover_44b1aa629e35__154[8] = 1;
+			return false
+		case <-ticker.C:goCover_44b1aa629e35__154[9] = 1;
+			// Re-read the position: the bot may still be being moved.
+			p := c.Position()
+			if c.world.hasChunk(int32(math.Floor(p.X)), int32(math.Floor(p.Z))) {goCover_44b1aa629e35__154[10] = 1;
+				return true
+			}
+		}
+	}
+}
+
+// handleWorldPacket decodes the terrain packets. Returns false if the packet
+// was not one of them.
+func (c *Client) handleWorldPacket(p protocol.Packet) (bool, error) {goCover_44b1aa629e35__155[0] = 33 ; goCover_44b1aa629e35__155[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__155[2] = 155 ; goCover_44b1aa629e35__155[3] = 1;
+	switch p.ID {
+	case c.v.Packets.CBPlayMapChunk:goCover_44b1aa629e35__155[5] = 1;
+		r := p.Reader()
+		x, z := r.I32(), r.I32()
+		// Heightmaps: an array of {type, data[]}. Skipped, but it has to be
+		// walked exactly or chunkData starts at the wrong offset.
+		heightmaps := r.VarInt()
+		for i := int32(0); i < heightmaps; i++ {goCover_44b1aa629e35__155[22] = 1;
+			r.VarInt() // type
+			n := r.VarInt()
+			for j := int32(0); j < n; j++ {goCover_44b1aa629e35__155[23] = 1;
+				r.I64()
+			}
+		}
+		goCover_44b1aa629e35__155[6] = 1;size := r.VarInt()
+		if err := r.Err(); err != nil {goCover_44b1aa629e35__155[24] = 1;
+			return true, err
+		}
+		goCover_44b1aa629e35__155[7] = 1;if size < 0 || int(size) > len(r.Remaining()) {goCover_44b1aa629e35__155[25] = 1;
+			return true, nil // malformed or truncated; drop rather than guess
+		}
+		goCover_44b1aa629e35__155[8] = 1;blob := r.Remaining()[:size]
+		dumpChunkBlob(blob)
+		column, err := protocol.ParseChunkData(c.v, x, z, blob)
+		if err != nil {goCover_44b1aa629e35__155[26] = 1;
+			// A chunk that fails to parse is dropped, not fatal: the bot keeps
+			// playing with a hole in its map rather than dying on one packet.
+			c.log.Warn("chunk parse failed", "x", x, "z", z, "err", err)
+			return true, nil
+		}
+		goCover_44b1aa629e35__155[9] = 1;c.world.store(column)
+		return true, nil
+
+	case c.v.Packets.CBPlayChunkBatchFinished:goCover_44b1aa629e35__155[10] = 1;
+		// The server sends chunks in batches and waits for the client to report
+		// how fast it can absorb them. Without this reply the sender throttles
+		// to a standstill after the first batch — terrain arrives at join and
+		// never again, so the bot spends the rest of its life believing that
+		// anywhere it teleports to is an infinite void.
+		//
+		// A headless client has no rendering to keep up with, so it asks for
+		// the maximum rather than measuring itself; the server clamps it.
+		r := p.Reader()
+		batchSize := r.VarInt()
+		if err := r.Err(); err != nil {goCover_44b1aa629e35__155[27] = 1;
+			return true, err
+		}
+		goCover_44b1aa629e35__155[11] = 1;if c.v.Packets.SBPlayChunkBatchReceived == protocol.Absent {goCover_44b1aa629e35__155[28] = 1;
+			return true, nil
+		}
+		goCover_44b1aa629e35__155[12] = 1;w := protocol.NewWriter(c.v.Packets.SBPlayChunkBatchReceived).F32(maxChunksPerTick)
+		if err := c.conn.WritePacket(w.Bytes()); err != nil {goCover_44b1aa629e35__155[29] = 1;
+			return true, err
+		}
+		goCover_44b1aa629e35__155[13] = 1;c.log.Debug("chunk batch acknowledged", "chunks", batchSize)
+		return true, nil
+
+	case c.v.Packets.CBPlayChunkBatchStart:goCover_44b1aa629e35__155[14] = 1;
+		return true, nil // nothing to do; the reply happens on finish
+
+	case c.v.Packets.CBPlayUnloadChunk:goCover_44b1aa629e35__155[15] = 1;
+		r := p.Reader()
+		// Note the order: Z comes first in this packet.
+		z, x := r.I32(), r.I32()
+		if err := r.Err(); err != nil {goCover_44b1aa629e35__155[30] = 1;
+			return true, err
+		}
+		goCover_44b1aa629e35__155[16] = 1;c.world.drop(x, z)
+		return true, nil
+
+	case c.v.Packets.CBPlayBlockChange:goCover_44b1aa629e35__155[17] = 1;
+		r := p.Reader()
+		packed := r.I64()
+		state := r.VarInt()
+		if err := r.Err(); err != nil {goCover_44b1aa629e35__155[31] = 1;
+			return true, err
+		}
+		goCover_44b1aa629e35__155[18] = 1;x, y, z := protocol.DecodeBlockPos(packed)
+		c.world.setBlockState(x, y, z, state)
+		return true, nil
+
+	case c.v.Packets.CBPlayMultiBlockChange:goCover_44b1aa629e35__155[19] = 1;
+		r := p.Reader()
+		packed := r.I64()
+		n := r.VarInt()
+		if err := r.Err(); err != nil {goCover_44b1aa629e35__155[32] = 1;
+			return true, err
+		}
+		// Section coordinates: x:22, z:22, y:20.
+		goCover_44b1aa629e35__155[20] = 1;sectionX := int32(packed >> 42)
+		sectionZ := int32(packed << 22 >> 42)
+		sectionY := int32(packed << 44 >> 44)
+		for i := int32(0); i < n; i++ {goCover_44b1aa629e35__155[33] = 1;
+			record := r.VarLong()
+			if err := r.Err(); err != nil {goCover_44b1aa629e35__155[35] = 1;
+				return true, err
+			}
+			goCover_44b1aa629e35__155[34] = 1;state := int32(record >> 12)
+			local := record & 0xfff
+			dx := int32(local>>8) & 0xf
+			dz := int32(local>>4) & 0xf
+			dy := int32(local) & 0xf
+			c.world.setBlockState(
+				sectionX*16+dx,
+				sectionY*16+dy,
+				sectionZ*16+dz,
+				state)
+		}
+		goCover_44b1aa629e35__155[21] = 1;return true, nil
+	}
+	goCover_44b1aa629e35__155[4] = 1;return false, nil
+}

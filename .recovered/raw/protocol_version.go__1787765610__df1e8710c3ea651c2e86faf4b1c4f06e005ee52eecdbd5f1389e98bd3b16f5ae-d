@@ -1,0 +1,281 @@
+//line /home/smoca/work/blocktopia/blocktopia-client/protocol/version.go:1:1
+package protocol
+
+import (
+	"fmt"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+)
+
+// PacketIDs holds every packet ID this client uses, for one protocol version.
+//
+// IDs are dense indices that shift whenever Mojang inserts a packet, so they
+// cannot be constants. A field of -1 means the packet does not exist in that
+// version; since real IDs are non-negative, an absent packet simply never
+// matches a dispatch and never gets sent.
+type PacketIDs struct {
+	SBHandshake int32
+
+	SBLoginStart           int32
+	SBLoginAcknowledged    int32
+	CBLoginDisconnect      int32
+	CBLoginEncryptionBegin int32
+	CBLoginSuccess         int32
+	CBLoginCompress        int32
+
+	SBConfigSettings            int32
+	SBConfigFinishConfiguration int32
+	SBConfigKeepAlive           int32
+	SBConfigPong                int32
+	SBConfigSelectKnownPacks    int32
+	SBConfigAcceptCodeOfConduct int32
+	CBConfigDisconnect          int32
+	CBConfigFinishConfiguration int32
+	CBConfigKeepAlive           int32
+	CBConfigPing                int32
+	CBConfigSelectKnownPacks    int32
+	CBConfigCodeOfConduct       int32
+
+	SBPlayTeleportConfirm    int32
+	SBPlayAttack             int32
+	SBPlayChatMessage        int32
+	SBPlayClientCommand      int32
+	SBPlayUseEntity          int32
+	SBPlayUseItem            int32
+	SBPlayKeepAlive          int32
+	SBPlayPosition           int32
+	SBPlayPositionLook       int32
+	SBPlayLook               int32
+	SBPlayBlockDig           int32
+	SBPlayHeldItemSlot       int32
+	SBPlayArmAnimation       int32
+	SBPlayBlockPlace         int32
+	SBPlayWindowClick        int32
+	SBPlayCloseWindow        int32
+	SBPlaySetCreativeSlot    int32
+	SBPlayPlayerInput        int32
+	SBPlayEntityAction       int32
+	SBPlayChunkBatchReceived int32
+	SBPlayPlayerLoaded       int32
+
+	CBPlaySpawnEntity        int32
+	CBPlayBlockChange        int32
+	CBPlayKickDisconnect     int32
+	CBPlayUnloadChunk        int32
+	CBPlayKeepAlive          int32
+	CBPlayMapChunk           int32
+	CBPlayLogin              int32
+	CBPlayRelEntityMove      int32
+	CBPlayEntityMoveLook     int32
+	CBPlayEntityTeleport     int32
+	CBPlayDeathCombatEvent   int32
+	CBPlayPosition           int32
+	CBPlayEntityDestroy      int32
+	CBPlayMultiBlockChange   int32
+	CBPlayRespawn            int32
+	CBPlayUpdateHealth       int32
+	CBPlayWindowItems        int32
+	CBPlaySetSlot            int32
+	CBPlayOpenWindow         int32
+	CBPlayHeldItemSlot       int32
+	CBPlayCollect            int32
+	CBPlayChunkBatchStart    int32
+	CBPlayChunkBatchFinished int32
+}
+
+// Absent is the ID of a packet a version does not have.
+const Absent int32 = -1
+
+// ChunkFormat captures the parts of the chunk encoding that changed between
+// versions. These are the two that actually bite:
+//
+//   - HasSizePrefix: before 1.21.5 each paletted container carried a VarInt
+//     count of longs. From 1.21.5 it is computed instead, saving a byte.
+//   - HasFluidCount: from 26.1 each section carries a second int16 after the
+//     solid block count.
+//
+// Both are invisible until they are wrong, and then they surface as a short
+// read several sections downstream — nowhere near the actual mistake.
+type ChunkFormat struct {
+	HasFluidCount bool
+	HasSizePrefix bool
+}
+
+// Version is everything this client needs to know that varies between
+// Minecraft versions.
+type Version struct {
+	Name     string
+	Protocol int32
+	Chunk    ChunkFormat
+	Packets  PacketIDs
+
+	entityNames []string
+	itemNames   []string
+	itemStacks  []int32
+	solidStates [][2]int32
+	waterStates [][2]int32
+	lavaStates  [][2]int32
+	airStates   [][2]int32
+}
+
+// SupportsAttackPacket reports whether the version has a dedicated attack
+// packet. Versions before 26.1 fold attacking into use_entity with a mode
+// field, which this client does not implement — so attacking is unavailable
+// there rather than silently doing nothing.
+func (v *Version) SupportsAttackPacket() bool {goCover_057b68bc3a18__58[0] = 1 ; goCover_057b68bc3a18__58[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__58[2] = 58 ; goCover_057b68bc3a18__58[3] = 1; return v.Packets.SBPlayAttack != Absent }
+
+// EntityTypeName resolves a wire entity type ID to its namespaced name.
+func (v *Version) EntityTypeName(id int32) string {goCover_057b68bc3a18__59[0] = 3 ; goCover_057b68bc3a18__59[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__59[2] = 59 ; goCover_057b68bc3a18__59[3] = 1;
+	if id < 0 || int(id) >= len(v.entityNames) || v.entityNames[id] == "" {goCover_057b68bc3a18__59[5] = 1;
+		return "minecraft:unknown/" + strconv.FormatInt(int64(id), 10)
+	}
+	goCover_057b68bc3a18__59[4] = 1;return v.entityNames[id]
+}
+
+// ItemName resolves a wire item ID to its namespaced name.
+func (v *Version) ItemName(id int32) string {goCover_057b68bc3a18__60[0] = 3 ; goCover_057b68bc3a18__60[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__60[2] = 60 ; goCover_057b68bc3a18__60[3] = 1;
+	if id < 0 || int(id) >= len(v.itemNames) || v.itemNames[id] == "" {goCover_057b68bc3a18__60[5] = 1;
+		return "minecraft:unknown/" + strconv.FormatInt(int64(id), 10)
+	}
+	goCover_057b68bc3a18__60[4] = 1;return v.itemNames[id]
+}
+
+// StackSize returns how many of an item fit in one slot.
+//
+// This is not cosmetic for goal feasibility: totems stack to 1, so "hold 5
+// totems" needs five whole slots, while "hold 2304 dirt" needs exactly 36 —
+// every storage slot a player has.
+func (v *Version) StackSize(id int32) int32 {goCover_057b68bc3a18__61[0] = 3 ; goCover_057b68bc3a18__61[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__61[2] = 61 ; goCover_057b68bc3a18__61[3] = 1;
+	if id < 0 || int(id) >= len(v.itemStacks) || v.itemStacks[id] <= 0 {goCover_057b68bc3a18__61[5] = 1;
+		return 64
+	}
+	goCover_057b68bc3a18__61[4] = 1;return v.itemStacks[id]
+}
+
+// StackSizeOf returns the stack size for a namespaced item name.
+func (v *Version) StackSizeOf(name string) int32 {goCover_057b68bc3a18__62[0] = 6 ; goCover_057b68bc3a18__62[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__62[2] = 62 ; goCover_057b68bc3a18__62[3] = 1;
+	if !strings.Contains(name, ":") {goCover_057b68bc3a18__62[6] = 1;
+		name = "minecraft:" + name
+	}
+	goCover_057b68bc3a18__62[4] = 1;for id, n := range v.itemNames {goCover_057b68bc3a18__62[7] = 1;
+		if n == name {goCover_057b68bc3a18__62[8] = 1;
+			return v.StackSize(int32(id))
+		}
+	}
+	goCover_057b68bc3a18__62[5] = 1;return 64
+}
+
+// IsSolid reports whether a block state blocks movement.
+func (v *Version) IsSolid(state int32) bool {goCover_057b68bc3a18__63[0] = 1 ; goCover_057b68bc3a18__63[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__63[2] = 63 ; goCover_057b68bc3a18__63[3] = 1; return inRanges(v.solidStates, state) }
+
+// IsWater reports whether a block state is water or a bubble column.
+//
+// Water is emphatically not just "non-solid air": it cancels fall damage
+// completely and drowns anything that stays submerged. Treating it as empty is
+// how a bot falls into a lake like a stone and dies at the bottom.
+func (v *Version) IsWater(state int32) bool {goCover_057b68bc3a18__64[0] = 1 ; goCover_057b68bc3a18__64[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__64[2] = 64 ; goCover_057b68bc3a18__64[3] = 1; return inRanges(v.waterStates, state) }
+
+// IsLava reports whether a block state is lava.
+func (v *Version) IsLava(state int32) bool {goCover_057b68bc3a18__65[0] = 1 ; goCover_057b68bc3a18__65[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__65[2] = 65 ; goCover_057b68bc3a18__65[3] = 1; return inRanges(v.lavaStates, state) }
+
+// IsFluid reports whether a block state is a liquid.
+func (v *Version) IsFluid(state int32) bool {goCover_057b68bc3a18__66[0] = 1 ; goCover_057b68bc3a18__66[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__66[2] = 66 ; goCover_057b68bc3a18__66[3] = 1; return v.IsWater(state) || v.IsLava(state) }
+
+// IsAir reports whether a block state is any kind of air.
+//
+// Not just state 0: cave_air and void_air are distinct states with their own
+// IDs, and underground they are the overwhelming majority. Treating only
+// state 0 as air makes a crosshair ray stop dead on the first cave air block
+// it meets.
+func (v *Version) IsAir(state int32) bool {goCover_057b68bc3a18__67[0] = 1 ; goCover_057b68bc3a18__67[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__67[2] = 67 ; goCover_057b68bc3a18__67[3] = 1; return inRanges(v.airStates, state) }
+
+// IsTargetable reports whether the crosshair would stop on a block.
+//
+// This is deliberately NOT IsSolid. Vanilla raycasts the block's *outline*
+// shape, not its collision shape, and the two differ for exactly the blocks a
+// test suite cares about: cobweb, crops, torches and flowers are all
+// walk-through, so a collision-based ray passes straight through them and
+// reports an empty line of sight to something standing right in front of the
+// crosshair. Fluids are excluded because a block can be targeted through
+// water.
+func (v *Version) IsTargetable(state int32) bool {goCover_057b68bc3a18__68[0] = 1 ; goCover_057b68bc3a18__68[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__68[2] = 68 ; goCover_057b68bc3a18__68[3] = 1;
+	return !v.IsAir(state) && !v.IsFluid(state)
+}
+
+// AirState is the block state ID for air, which is 0 in every version.
+const AirState int32 = 0
+
+// inRanges reports whether state falls within any of the sorted, merged ranges.
+//
+// The generated tables hold a few hundred ranges rather than tens of thousands
+// of per-state entries, and a binary search over them is fast enough to call
+// for every block scanned during a fall.
+func inRanges(ranges [][2]int32, state int32) bool {goCover_057b68bc3a18__69[0] = 6 ; goCover_057b68bc3a18__69[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__69[2] = 69 ; goCover_057b68bc3a18__69[3] = 1;
+	lo, hi := 0, len(ranges)-1
+	for lo <= hi {goCover_057b68bc3a18__69[5] = 1;
+		mid := (lo + hi) / 2
+		switch {
+		case state < ranges[mid][0]:goCover_057b68bc3a18__69[6] = 1;
+			hi = mid - 1
+		case state > ranges[mid][1]:goCover_057b68bc3a18__69[7] = 1;
+			lo = mid + 1
+		default:goCover_057b68bc3a18__69[8] = 1;
+			return true
+		}
+	}
+	goCover_057b68bc3a18__69[4] = 1;return false
+}
+
+var (
+	registryMu sync.RWMutex
+	byName     = map[string]*Version{}
+	byProtocol = map[int32]*Version{}
+)
+
+// Register adds a version to the registry. Generated version files call this
+// from init, so importing the package is enough to make a version available.
+func Register(v *Version) {goCover_057b68bc3a18__70[0] = 1 ; goCover_057b68bc3a18__70[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__70[2] = 70 ; goCover_057b68bc3a18__70[3] = 1;
+	registryMu.Lock()
+	defer registryMu.Unlock()
+	byName[v.Name] = v
+	byProtocol[v.Protocol] = v
+}
+
+// ByName looks up a version by its Minecraft version string, e.g. "26.1".
+func ByName(name string) (*Version, error) {goCover_057b68bc3a18__71[0] = 3 ; goCover_057b68bc3a18__71[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__71[2] = 71 ; goCover_057b68bc3a18__71[3] = 1;
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+	if v, ok := byName[name]; ok {goCover_057b68bc3a18__71[5] = 1;
+		return v, nil
+	}
+	goCover_057b68bc3a18__71[4] = 1;return nil, fmt.Errorf("protocol: unsupported version %q (have %v)", name, namesLocked())
+}
+
+// ByProtocol looks up a version by its wire protocol number. This is what a
+// server-list ping reports, so it is the entry point for auto-detection.
+func ByProtocol(p int32) (*Version, error) {goCover_057b68bc3a18__72[0] = 3 ; goCover_057b68bc3a18__72[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__72[2] = 72 ; goCover_057b68bc3a18__72[3] = 1;
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+	if v, ok := byProtocol[p]; ok {goCover_057b68bc3a18__72[5] = 1;
+		return v, nil
+	}
+	goCover_057b68bc3a18__72[4] = 1;return nil, fmt.Errorf("protocol: unsupported protocol %d (have %v)", p, namesLocked())
+}
+
+// Names lists the registered version names, sorted.
+func Names() []string {goCover_057b68bc3a18__73[0] = 1 ; goCover_057b68bc3a18__73[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__73[2] = 73 ; goCover_057b68bc3a18__73[3] = 1;
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+	return namesLocked()
+}
+
+func namesLocked() []string {goCover_057b68bc3a18__74[0] = 3 ; goCover_057b68bc3a18__74[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__74[2] = 74 ; goCover_057b68bc3a18__74[3] = 1;
+	out := make([]string, 0, len(byName))
+	for name := range byName {goCover_057b68bc3a18__74[5] = 1;
+		out = append(out, name)
+	}
+	goCover_057b68bc3a18__74[4] = 1;sort.Strings(out)
+	return out
+}

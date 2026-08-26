@@ -1,0 +1,669 @@
+//line /home/smoca/work/blocktopia/blocktopia-client/client/client.go:1:1
+// Package client drives a Minecraft server connection far enough to be a real
+// player: it completes the handshake, login and configuration states, enters
+// play, and then keeps the connection healthy.
+//
+// It knows nothing about Blocktopia. Everything here is vanilla protocol
+// behaviour, so the package stays reusable — the assertion layer that makes
+// this a *test* harness lives outside it.
+package client
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/blocktopia/client/protocol"
+)
+
+// Options configures a Client.
+type Options struct {
+	// Addr is the server's host:port.
+	Addr string
+	// Host and Port are what the handshake advertises. Servers may route on
+	// these (virtual hosts, BungeeCord), so they are kept separate from the
+	// address actually dialled. Defaults are derived from Addr.
+	Host string
+	Port uint16
+	// Username is the offline-mode player name. The UUID is derived from it.
+	Username string
+	// Version is the Minecraft version to speak, e.g. "26.1". Empty means
+	// auto-detect: the client pings the server first and adopts whatever
+	// protocol it reports, which is what makes one binary usable against a
+	// fleet of servers on different versions.
+	Version string
+	// DialTimeout bounds the TCP connect. Defaults to 10s.
+	DialTimeout time.Duration
+	// ReadTimeout bounds any single read once connected. It must comfortably
+	// exceed the server's keep-alive interval (vanilla: 15s) or a healthy
+	// idle connection is torn down as if it had stalled. Defaults to 60s.
+	ReadTimeout time.Duration
+	// DisableAutoFall stops the bot falling by itself after a teleport.
+	//
+	// Auto-fall is on by default because teleporting is constant during tests
+	// and vanilla kicks a floating player after about four seconds. A bot
+	// teleported into mid-air and left there dies mid-suite with no warning,
+	// which is a test failure that has nothing to do with the test.
+	//
+	// Falling after a teleport is also simply what a real client does. When the
+	// bot is already on solid ground the fall detects that within a tick or two
+	// and costs ~100ms, so leaving it on is nearly free.
+	DisableAutoFall bool
+
+	// DisableAutoRespawn leaves a killed bot on the death screen. Auto-respawn
+	// is on by default (the zero value) because without it a dead bot is a
+	// *silent* dead end: the connection stays healthy and keep-alives keep
+	// flowing, but the server will not position a player who has not
+	// respawned, so every later action is quietly ignored and the run simply
+	// stops making progress. Bots die routinely — lava, falls, mobs — so a
+	// harness wants respawn handling on. It is switchable because a test that
+	// asserts on death itself needs to observe the corpse.
+	DisableAutoRespawn bool
+
+	// Logger receives connection lifecycle events. Defaults to slog.Default().
+	Logger *slog.Logger
+	// OnPacket, if set, observes every decoded clientbound packet. Intended
+	// for tracing and for layering higher-level behaviour on top without
+	// modifying this package.
+	OnPacket func(state protocol.State, p protocol.Packet)
+}
+
+// Position is the player's location and facing, as last known from the server.
+type Position struct {
+	X, Y, Z    float64
+	Yaw, Pitch float32
+}
+
+// Client is a single bot connection.
+type Client struct {
+	opts     Options
+	log      *slog.Logger
+	conn     *protocol.Conn
+	entities *entityTracker
+	world    *world
+	inv      *inventory
+	// v holds every version-specific detail: packet IDs, entity and block
+	// tables, and the chunk framing flags. Resolved during Connect, since
+	// auto-detection needs a round trip to the server.
+	v *protocol.Version
+
+	// UUID is the offline-mode UUID derived from Username. It is set before
+	// connecting, because callers key assertions on it.
+	UUID protocol.UUID
+
+	mu       sync.RWMutex
+	state    protocol.State
+	entityID int32
+	pos      Position
+	joined   bool
+	health   float32
+	food     int32
+	dead     bool
+	deaths   int
+	onGround bool
+	heldSlot int
+	input    uint8
+	// corrections counts server-issued position corrections. See the increment
+	// site: it is the client's only ground-detection signal.
+	corrections int
+
+	// falling guards auto-fall against re-entry. A fall provokes the very
+	// position corrections that trigger auto-fall, so without this the bot
+	// would spawn a new fall for every packet of its own descent.
+	falling atomic.Bool
+
+	// loadedSent guards the once-per-session player_loaded packet.
+	loadedSent atomic.Bool
+
+	// blockSequence numbers this connection's block actions. See nextSequence.
+	blockSequence atomic.Int32
+}
+
+// New builds a Client. It does not perform any I/O.
+func New(opts Options) (*Client, error) {goCover_44b1aa629e35__47[0] = 21 ; goCover_44b1aa629e35__47[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__47[2] = 47 ; goCover_44b1aa629e35__47[3] = 1;
+	if opts.Addr == "" {goCover_44b1aa629e35__47[11] = 1;
+		return nil, errors.New("client: Addr is required")
+	}
+	goCover_44b1aa629e35__47[4] = 1;if opts.Username == "" {goCover_44b1aa629e35__47[12] = 1;
+		return nil, errors.New("client: Username is required")
+	}
+	goCover_44b1aa629e35__47[5] = 1;if opts.DialTimeout == 0 {goCover_44b1aa629e35__47[13] = 1;
+		opts.DialTimeout = 10 * time.Second
+	}
+	goCover_44b1aa629e35__47[6] = 1;if opts.ReadTimeout == 0 {goCover_44b1aa629e35__47[14] = 1;
+		opts.ReadTimeout = 60 * time.Second
+	}
+	goCover_44b1aa629e35__47[7] = 1;if opts.Logger == nil {goCover_44b1aa629e35__47[15] = 1;
+		opts.Logger = slog.Default()
+	}
+	goCover_44b1aa629e35__47[8] = 1;if opts.Host == "" || opts.Port == 0 {goCover_44b1aa629e35__47[16] = 1;
+		host, port, err := splitHostPort(opts.Addr)
+		if err != nil {goCover_44b1aa629e35__47[19] = 1;
+			return nil, err
+		}
+		goCover_44b1aa629e35__47[17] = 1;if opts.Host == "" {goCover_44b1aa629e35__47[20] = 1;
+			opts.Host = host
+		}
+		goCover_44b1aa629e35__47[18] = 1;if opts.Port == 0 {goCover_44b1aa629e35__47[21] = 1;
+			opts.Port = port
+		}
+	}
+
+	goCover_44b1aa629e35__47[9] = 1;var version *protocol.Version
+	if opts.Version != "" {goCover_44b1aa629e35__47[22] = 1;
+		var err error
+		if version, err = protocol.ByName(opts.Version); err != nil {goCover_44b1aa629e35__47[23] = 1;
+			return nil, err
+		}
+	}
+
+	goCover_44b1aa629e35__47[10] = 1;return &Client{
+		opts:     opts,
+		v:        version,
+		log:      opts.Logger.With("bot", opts.Username),
+		UUID:     protocol.OfflineUUID(opts.Username),
+		entities: newEntityTracker(),
+		world:    newWorld(),
+		inv:      newInventory(),
+	}, nil
+}
+
+// Username returns the bot's player name.
+func (c *Client) Username() string {goCover_44b1aa629e35__48[0] = 1 ; goCover_44b1aa629e35__48[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__48[2] = 48 ; goCover_44b1aa629e35__48[3] = 1; return c.opts.Username }
+
+// State returns the current protocol state.
+func (c *Client) State() protocol.State {goCover_44b1aa629e35__49[0] = 1 ; goCover_44b1aa629e35__49[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__49[2] = 49 ; goCover_44b1aa629e35__49[3] = 1;
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.state
+}
+
+// Position returns the last position the server told us about.
+func (c *Client) Position() Position {goCover_44b1aa629e35__50[0] = 1 ; goCover_44b1aa629e35__50[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__50[2] = 50 ; goCover_44b1aa629e35__50[3] = 1;
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.pos
+}
+
+// EntityID returns the player's entity ID, valid once joined.
+func (c *Client) EntityID() int32 {goCover_44b1aa629e35__51[0] = 1 ; goCover_44b1aa629e35__51[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__51[2] = 51 ; goCover_44b1aa629e35__51[3] = 1;
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.entityID
+}
+
+// Close tears down the connection.
+func (c *Client) Close() error {goCover_44b1aa629e35__52[0] = 3 ; goCover_44b1aa629e35__52[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__52[2] = 52 ; goCover_44b1aa629e35__52[3] = 1;
+	if c.conn == nil {goCover_44b1aa629e35__52[5] = 1;
+		return nil
+	}
+	goCover_44b1aa629e35__52[4] = 1;return c.conn.Close()
+}
+
+// Connect dials the server and drives handshake -> login -> configuration,
+// returning once the client has entered the play state.
+//
+// It does not read play-state packets; call Run for that. Splitting the two
+// lets a caller connect, assert on having joined, and only then start
+// pumping — which keeps "did the bot get in?" separable from "what happened
+// after it got in?".
+func (c *Client) Connect(ctx context.Context) error {goCover_44b1aa629e35__53[0] = 11 ; goCover_44b1aa629e35__53[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__53[2] = 53 ; goCover_44b1aa629e35__53[3] = 1;
+	if c.v == nil {goCover_44b1aa629e35__53[8] = 1;
+		// Auto-detect. A server-list ping is a complete, separate connection
+		// that needs no version agreement, so it is safe to make before we
+		// know which protocol to speak.
+		v, err := DetectVersion(c.opts.Addr, c.opts.Host, c.opts.Port, c.opts.DialTimeout)
+		if err != nil {goCover_44b1aa629e35__53[10] = 1;
+			return err
+		}
+		goCover_44b1aa629e35__53[9] = 1;c.v = v
+		c.log.Info("auto-detected server version", "version", v.Name, "protocol", v.Protocol)
+	}
+
+	goCover_44b1aa629e35__53[4] = 1;conn, err := protocol.Dial(c.opts.Addr, c.opts.DialTimeout)
+	if err != nil {goCover_44b1aa629e35__53[11] = 1;
+		return err
+	}
+	goCover_44b1aa629e35__53[5] = 1;c.conn = conn
+	c.setState(protocol.StateHandshaking)
+	c.log.Info("connected", "addr", c.opts.Addr, "uuid", c.UUID.String())
+
+	if err := c.handshake(); err != nil {goCover_44b1aa629e35__53[12] = 1;
+		return err
+	}
+	goCover_44b1aa629e35__53[6] = 1;if err := c.login(ctx); err != nil {goCover_44b1aa629e35__53[13] = 1;
+		return err
+	}
+	goCover_44b1aa629e35__53[7] = 1;return c.configure(ctx)
+}
+
+// handshake announces the protocol version and the intent to log in.
+func (c *Client) handshake() error {goCover_44b1aa629e35__54[0] = 3 ; goCover_44b1aa629e35__54[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__54[2] = 54 ; goCover_44b1aa629e35__54[3] = 1;
+	w := protocol.NewWriter(c.v.Packets.SBHandshake).
+		VarInt(c.v.Protocol).
+		String(c.opts.Host).
+		// The handshake carries the port as an unsigned short, not a VarInt.
+		I16(int16(c.opts.Port)).
+		VarInt(2) // next state: login
+	if err := c.conn.WritePacket(w.Bytes()); err != nil {goCover_44b1aa629e35__54[5] = 1;
+		return err
+	}
+	goCover_44b1aa629e35__54[4] = 1;c.setState(protocol.StateLogin)
+	return nil
+}
+
+// login completes the login state.
+//
+// Only offline mode is supported: the server is expected never to send
+// encryption_begin. If it does, that means online-mode is on and the bot
+// cannot proceed — worth an explicit error, because the alternative symptom
+// is an unexplained hang.
+func (c *Client) login(ctx context.Context) error {goCover_44b1aa629e35__55[0] = 18 ; goCover_44b1aa629e35__55[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__55[2] = 55 ; goCover_44b1aa629e35__55[3] = 1;
+	w := protocol.NewWriter(c.v.Packets.SBLoginStart).
+		String(c.opts.Username).
+		UUID(c.UUID)
+	if err := c.conn.WritePacket(w.Bytes()); err != nil {goCover_44b1aa629e35__55[5] = 1;
+		return err
+	}
+
+	goCover_44b1aa629e35__55[4] = 1;for {goCover_44b1aa629e35__55[6] = 1;
+		p, err := c.readPacket(ctx)
+		if err != nil {goCover_44b1aa629e35__55[8] = 1;
+			return err
+		}
+		goCover_44b1aa629e35__55[7] = 1;switch p.ID {
+		case c.v.Packets.CBLoginCompress:goCover_44b1aa629e35__55[9] = 1;
+			r := p.Reader()
+			threshold := int(r.VarInt())
+			if err := r.Err(); err != nil {goCover_44b1aa629e35__55[17] = 1;
+				return err
+			}
+			goCover_44b1aa629e35__55[10] = 1;c.conn.SetCompressionThreshold(threshold)
+			c.log.Debug("compression enabled", "threshold", threshold)
+
+		case c.v.Packets.CBLoginSuccess:goCover_44b1aa629e35__55[11] = 1;
+			r := p.Reader()
+			uuid := r.UUID()
+			name := r.String()
+			if err := r.Err(); err != nil {goCover_44b1aa629e35__55[18] = 1;
+				return err
+			}
+			goCover_44b1aa629e35__55[12] = 1;c.log.Info("login success", "username", name, "uuid", uuid.String())
+			if uuid != c.UUID {goCover_44b1aa629e35__55[19] = 1;
+				// Not fatal, but it means assertions keyed on the derived UUID
+				// would look at the wrong player, so it must be visible.
+				c.log.Warn("server assigned a different uuid than derived",
+					"derived", c.UUID.String(), "assigned", uuid.String())
+				c.UUID = uuid
+			}
+			// Acknowledging login moves both sides into configuration.
+			goCover_44b1aa629e35__55[13] = 1;if err := c.conn.WritePacket(protocol.NewWriter(c.v.Packets.SBLoginAcknowledged).Bytes()); err != nil {goCover_44b1aa629e35__55[20] = 1;
+				return err
+			}
+			goCover_44b1aa629e35__55[14] = 1;c.setState(protocol.StateConfiguration)
+			return nil
+
+		case c.v.Packets.CBLoginDisconnect:goCover_44b1aa629e35__55[15] = 1;
+			r := p.Reader()
+			return fmt.Errorf("client: disconnected during login: %s", r.String())
+
+		case c.v.Packets.CBLoginEncryptionBegin:goCover_44b1aa629e35__55[16] = 1;
+			return errors.New("client: server requested encryption (online-mode=true); this client only supports offline mode")
+		}
+	}
+}
+
+// configure completes the configuration state.
+//
+// The non-obvious one is ping. Nothing in the vanilla flow requires it, but a
+// Fabric API configuration task sends one and blocks until it is answered —
+// so a client that ignores it sits in configuration forever with no error,
+// having successfully logged in. Answering it is what actually gets a bot
+// into the world on a Fabric server.
+func (c *Client) configure(ctx context.Context) error {goCover_44b1aa629e35__56[0] = 22 ; goCover_44b1aa629e35__56[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__56[2] = 56 ; goCover_44b1aa629e35__56[3] = 1;
+	// Client Information: the server waits for this before finishing
+	// configuration. Note the trailing particleStatus field — it was added in
+	// 1.21.2 and omitting it desyncs the packet rather than erroring.
+	settings := protocol.NewWriter(c.v.Packets.SBConfigSettings).
+		String("en_us").
+		I8(10).    // view distance
+		VarInt(0). // chat mode: enabled
+		Bool(true).
+		U8(0x7f).  // all skin parts
+		VarInt(1). // main hand: right
+		Bool(false).
+		Bool(true).
+		VarInt(0) // particle status: all
+	if err := c.conn.WritePacket(settings.Bytes()); err != nil {goCover_44b1aa629e35__56[5] = 1;
+		return err
+	}
+
+	goCover_44b1aa629e35__56[4] = 1;for {goCover_44b1aa629e35__56[6] = 1;
+		p, err := c.readPacket(ctx)
+		if err != nil {goCover_44b1aa629e35__56[8] = 1;
+			return err
+		}
+		goCover_44b1aa629e35__56[7] = 1;switch p.ID {
+		case c.v.Packets.CBConfigPing:goCover_44b1aa629e35__56[9] = 1;
+			r := p.Reader()
+			id := r.I32()
+			if err := r.Err(); err != nil {goCover_44b1aa629e35__56[18] = 1;
+				return err
+			}
+			goCover_44b1aa629e35__56[10] = 1;if err := c.conn.WritePacket(protocol.NewWriter(c.v.Packets.SBConfigPong).I32(id).Bytes()); err != nil {goCover_44b1aa629e35__56[19] = 1;
+				return err
+			}
+
+		case c.v.Packets.CBConfigKeepAlive:goCover_44b1aa629e35__56[11] = 1;
+			r := p.Reader()
+			id := r.I64()
+			if err := r.Err(); err != nil {goCover_44b1aa629e35__56[20] = 1;
+				return err
+			}
+			goCover_44b1aa629e35__56[12] = 1;if err := c.conn.WritePacket(protocol.NewWriter(c.v.Packets.SBConfigKeepAlive).I64(id).Bytes()); err != nil {goCover_44b1aa629e35__56[21] = 1;
+				return err
+			}
+
+		case c.v.Packets.CBConfigSelectKnownPacks:goCover_44b1aa629e35__56[13] = 1;
+			// Replying with an empty set tells the server we have no cached
+			// data packs, so it should send registry data in full. A test bot
+			// discards that data anyway; claiming to know packs we do not
+			// would suppress information we might later want.
+			if err := c.conn.WritePacket(protocol.NewWriter(c.v.Packets.SBConfigSelectKnownPacks).VarInt(0).Bytes()); err != nil {goCover_44b1aa629e35__56[22] = 1;
+				return err
+			}
+
+		case c.v.Packets.CBConfigCodeOfConduct:goCover_44b1aa629e35__56[14] = 1;
+			if err := c.conn.WritePacket(protocol.NewWriter(c.v.Packets.SBConfigAcceptCodeOfConduct).Bytes()); err != nil {goCover_44b1aa629e35__56[23] = 1;
+				return err
+			}
+
+		case c.v.Packets.CBConfigFinishConfiguration:goCover_44b1aa629e35__56[15] = 1;
+			if err := c.conn.WritePacket(protocol.NewWriter(c.v.Packets.SBConfigFinishConfiguration).Bytes()); err != nil {goCover_44b1aa629e35__56[24] = 1;
+				return err
+			}
+			goCover_44b1aa629e35__56[16] = 1;c.setState(protocol.StatePlay)
+			c.log.Info("entered play state")
+			return nil
+
+		case c.v.Packets.CBConfigDisconnect:goCover_44b1aa629e35__56[17] = 1;
+			r := p.Reader()
+			return fmt.Errorf("client: disconnected during configuration: %s", r.String())
+		}
+	}
+}
+
+// Run pumps play-state packets until ctx is cancelled, the server disconnects,
+// or a protocol error occurs.
+//
+// Only the packets required to stay connected and to know where we are get
+// decoded; everything else is skipped by its length prefix. That is what keeps
+// this client small — there are 141 clientbound play packets in 26.1 and this
+// handles four.
+func (c *Client) Run(ctx context.Context) error {goCover_44b1aa629e35__57[0] = 42 ; goCover_44b1aa629e35__57[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__57[2] = 57 ; goCover_44b1aa629e35__57[3] = 1;
+	if c.State() != protocol.StatePlay {goCover_44b1aa629e35__57[5] = 1;
+		return errors.New("client: Run called before entering play state")
+	}
+	goCover_44b1aa629e35__57[4] = 1;for {goCover_44b1aa629e35__57[6] = 1;
+		p, err := c.readPacket(ctx)
+		if err != nil {goCover_44b1aa629e35__57[11] = 1;
+			return err
+		}
+		// Entity bookkeeping is high-volume and self-contained, so it is
+		// handled first and short-circuits the rest of the dispatch.
+		goCover_44b1aa629e35__57[7] = 1;if handled, err := c.handleEntityPacket(p); err != nil {goCover_44b1aa629e35__57[12] = 1;
+			return err
+		} else{ goCover_44b1aa629e35__57[13] = 1;if handled {goCover_44b1aa629e35__57[14] = 1;
+			continue
+		}}
+		goCover_44b1aa629e35__57[8] = 1;if handled, err := c.handleWorldPacket(p); err != nil {goCover_44b1aa629e35__57[15] = 1;
+			return err
+		} else{ goCover_44b1aa629e35__57[16] = 1;if handled {goCover_44b1aa629e35__57[17] = 1;
+			continue
+		}}
+		goCover_44b1aa629e35__57[9] = 1;if handled, err := c.handleInventoryPacket(p); err != nil {goCover_44b1aa629e35__57[18] = 1;
+			return err
+		} else{ goCover_44b1aa629e35__57[19] = 1;if handled {goCover_44b1aa629e35__57[20] = 1;
+			continue
+		}}
+		goCover_44b1aa629e35__57[10] = 1;switch p.ID {
+		case c.v.Packets.CBPlayLogin:goCover_44b1aa629e35__57[21] = 1;
+			r := p.Reader()
+			entityID := r.I32()
+			if err := r.Err(); err != nil {goCover_44b1aa629e35__57[36] = 1;
+				return err
+			}
+			goCover_44b1aa629e35__57[22] = 1;c.mu.Lock()
+			c.entityID = entityID
+			c.joined = true
+			c.mu.Unlock()
+			c.log.Info("joined the game", "entity_id", entityID)
+
+		case c.v.Packets.CBPlayPosition:goCover_44b1aa629e35__57[23] = 1;
+			// A teleport the server expects to be acknowledged. Leaving it
+			// unconfirmed makes the server resend it and refuse to accept our
+			// movement, so this is not optional bookkeeping.
+			r := p.Reader()
+			teleportID := r.VarInt()
+			x, y, z := r.F64(), r.F64(), r.F64()
+			r.F64() // dx
+			r.F64() // dy
+			r.F64() // dz
+			yaw, pitch := r.F32(), r.F32()
+			if err := r.Err(); err != nil {goCover_44b1aa629e35__57[37] = 1;
+				return err
+			}
+			goCover_44b1aa629e35__57[24] = 1;c.mu.Lock()
+			c.pos = Position{X: x, Y: y, Z: z, Yaw: yaw, Pitch: pitch}
+			// Assume the server put us somewhere solid. Claiming to be
+			// airborne on every update is what makes a server treat a bot as
+			// flying, so the default has to be on-ground rather than zero.
+			c.onGround = true
+			// Count server-issued corrections. This is the only ground-truth
+			// signal available to a client that decodes no chunks: the server
+			// rejects a move into solid terrain and snaps the player back, so
+			// a correction arriving mid-descent means "you have landed".
+			c.corrections++
+			c.mu.Unlock()
+
+			if err := c.conn.WritePacket(protocol.NewWriter(c.v.Packets.SBPlayTeleportConfirm).VarInt(teleportID).Bytes()); err != nil {goCover_44b1aa629e35__57[38] = 1;
+				return err
+			}
+			// Echoing the position back is what the vanilla client does and
+			// what settles the server's "has the player accepted?" check.
+			goCover_44b1aa629e35__57[25] = 1;ack := protocol.NewWriter(c.v.Packets.SBPlayPositionLook).
+				F64(x).F64(y).F64(z).
+				F32(yaw).F32(pitch).
+				U8(protocol.MovementOnGround)
+			if err := c.conn.WritePacket(ack.Bytes()); err != nil {goCover_44b1aa629e35__57[39] = 1;
+				return err
+			}
+			goCover_44b1aa629e35__57[26] = 1;c.log.Info("position synced", "x", x, "y", y, "z", z)
+			c.announceLoaded()
+			// A teleport may well have put the bot in mid-air. Settle it onto
+			// ground before vanilla's four-second float timer kicks it.
+			c.autoFall(ctx)
+
+		case c.v.Packets.CBPlayKeepAlive:goCover_44b1aa629e35__57[27] = 1;
+			r := p.Reader()
+			id := r.I64()
+			if err := r.Err(); err != nil {goCover_44b1aa629e35__57[40] = 1;
+				return err
+			}
+			goCover_44b1aa629e35__57[28] = 1;if err := c.conn.WritePacket(protocol.NewWriter(c.v.Packets.SBPlayKeepAlive).I64(id).Bytes()); err != nil {goCover_44b1aa629e35__57[41] = 1;
+				return err
+			}
+
+		case c.v.Packets.CBPlayUpdateHealth:goCover_44b1aa629e35__57[29] = 1;
+			r := p.Reader()
+			health := r.F32()
+			food := r.VarInt()
+			if err := r.Err(); err != nil {goCover_44b1aa629e35__57[42] = 1;
+				return err
+			}
+			goCover_44b1aa629e35__57[30] = 1;c.mu.Lock()
+			c.health, c.food = health, food
+			c.mu.Unlock()
+
+		case c.v.Packets.CBPlayDeathCombatEvent:goCover_44b1aa629e35__57[31] = 1;
+			// The death message is a text component and is deliberately left
+			// unparsed — decoding NBT text is a large dependency for a string
+			// this client never asserts on.
+			c.mu.Lock()
+			c.dead = true
+			c.deaths++
+			deaths := c.deaths
+			c.mu.Unlock()
+			c.log.Info("died", "deaths", deaths)
+
+			if c.opts.DisableAutoRespawn {goCover_44b1aa629e35__57[43] = 1;
+				c.log.Warn("auto-respawn disabled; bot will stay dead and ignore further actions")
+				break
+			}
+			// Until this is sent the player stays on the death screen: the
+			// server keeps the connection alive but refuses to position them,
+			// so everything afterwards silently does nothing.
+			goCover_44b1aa629e35__57[32] = 1;respawn := protocol.NewWriter(c.v.Packets.SBPlayClientCommand).
+				VarInt(protocol.ClientCommandPerformRespawn)
+			if err := c.conn.WritePacket(respawn.Bytes()); err != nil {goCover_44b1aa629e35__57[44] = 1;
+				return err
+			}
+			goCover_44b1aa629e35__57[33] = 1;c.log.Info("respawn requested")
+
+		case c.v.Packets.CBPlayRespawn:goCover_44b1aa629e35__57[34] = 1;
+			// The payload is a SpawnInfo block that this client does not need;
+			// the authoritative position arrives separately as a teleport.
+			c.mu.Lock()
+			c.dead = false
+			c.mu.Unlock()
+			// A respawn can cross dimensions, and entity IDs do not survive
+			// that. Keeping stale entries would let the bot attack an ID that
+			// now means something else, or nothing.
+			c.entities.reset()
+			// Terrain is dimension-scoped too, and the same chunk coordinate
+			// means different blocks on the other side of a portal.
+			c.world.reset()
+			c.log.Info("respawned")
+
+		case c.v.Packets.CBPlayKickDisconnect:goCover_44b1aa629e35__57[35] = 1;
+			// The play-state kick reason is an NBT text component, not a
+			// length-prefixed string. Reading it as one prints binary noise on
+			// the single most important failure path, so pull the readable
+			// parts out instead of pretending to decode NBT.
+			return fmt.Errorf("client: kicked: %s", readableText(p.Data))
+		}
+	}
+}
+
+// Health returns the last known health and food level.
+func (c *Client) Health() (health float32, food int32) {goCover_44b1aa629e35__58[0] = 1 ; goCover_44b1aa629e35__58[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__58[2] = 58 ; goCover_44b1aa629e35__58[3] = 1;
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.health, c.food
+}
+
+// Dead reports whether the bot is currently on the death screen. A dead bot
+// silently ignores actions, so anything driving it should check this rather
+// than trusting that a healthy connection means a usable player.
+func (c *Client) Dead() bool {goCover_44b1aa629e35__59[0] = 1 ; goCover_44b1aa629e35__59[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__59[2] = 59 ; goCover_44b1aa629e35__59[3] = 1;
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.dead
+}
+
+// Deaths returns how many times the bot has died this session.
+func (c *Client) Deaths() int {goCover_44b1aa629e35__60[0] = 1 ; goCover_44b1aa629e35__60[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__60[2] = 60 ; goCover_44b1aa629e35__60[3] = 1;
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.deaths
+}
+
+// Corrections returns how many position corrections the server has issued.
+// A rise in this value is how the client learns it has hit something.
+func (c *Client) Corrections() int {goCover_44b1aa629e35__61[0] = 1 ; goCover_44b1aa629e35__61[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__61[2] = 61 ; goCover_44b1aa629e35__61[3] = 1;
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.corrections
+}
+
+// OnGround reports the bot's last known support state.
+func (c *Client) OnGround() bool {goCover_44b1aa629e35__62[0] = 1 ; goCover_44b1aa629e35__62[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__62[2] = 62 ; goCover_44b1aa629e35__62[3] = 1;
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.onGround
+}
+
+// Joined reports whether the play login packet has been seen.
+func (c *Client) Joined() bool {goCover_44b1aa629e35__63[0] = 1 ; goCover_44b1aa629e35__63[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__63[2] = 63 ; goCover_44b1aa629e35__63[3] = 1;
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.joined
+}
+
+// readPacket reads one packet, honouring ctx and the read timeout.
+func (c *Client) readPacket(ctx context.Context) (protocol.Packet, error) {goCover_44b1aa629e35__64[0] = 13 ; goCover_44b1aa629e35__64[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__64[2] = 64 ; goCover_44b1aa629e35__64[3] = 1;
+	if err := ctx.Err(); err != nil {goCover_44b1aa629e35__64[9] = 1;
+		return protocol.Packet{}, err
+	}
+	goCover_44b1aa629e35__64[4] = 1;deadline := time.Now().Add(c.opts.ReadTimeout)
+	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {goCover_44b1aa629e35__64[10] = 1;
+		// Deliberately let the context deadline land first. Setting the socket
+		// deadline to exactly the context deadline is a race: the i/o timeout
+		// can surface before ctx.Err() is set, which reports a clean shutdown
+		// as a read failure. The margin makes the context always win.
+		deadline = d.Add(100 * time.Millisecond)
+	}
+	goCover_44b1aa629e35__64[5] = 1;if err := c.conn.SetReadDeadline(deadline); err != nil {goCover_44b1aa629e35__64[11] = 1;
+		return protocol.Packet{}, err
+	}
+	goCover_44b1aa629e35__64[6] = 1;p, err := c.conn.ReadPacket()
+	if err != nil {goCover_44b1aa629e35__64[12] = 1;
+		if ctxErr := ctx.Err(); ctxErr != nil {goCover_44b1aa629e35__64[14] = 1;
+			return protocol.Packet{}, ctxErr
+		}
+		goCover_44b1aa629e35__64[13] = 1;return protocol.Packet{}, err
+	}
+	goCover_44b1aa629e35__64[7] = 1;if c.opts.OnPacket != nil {goCover_44b1aa629e35__64[15] = 1;
+		c.opts.OnPacket(c.State(), p)
+	}
+	goCover_44b1aa629e35__64[8] = 1;return p, nil
+}
+
+func (c *Client) setState(s protocol.State) {goCover_44b1aa629e35__65[0] = 1 ; goCover_44b1aa629e35__65[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__65[2] = 65 ; goCover_44b1aa629e35__65[3] = 1;
+	c.mu.Lock()
+	c.state = s
+	c.mu.Unlock()
+}
+
+// announceLoaded tells the server the world has finished loading, once.
+//
+// A vanilla client sends this after its level renderer is ready, and the
+// server gates parts of a player's interaction on having received it. Never
+// sending it leaves the player permanently half-joined: the symptom is that
+// the *first* block action of a session is silently dropped — no rejection,
+// the block simply does not break — and everything after it works, because by
+// then the server has settled the player some other way.
+//
+// Sent after the first position sync rather than immediately on entering play,
+// which is the point a real client has something loaded to report.
+func (c *Client) announceLoaded() {goCover_44b1aa629e35__66[0] = 7 ; goCover_44b1aa629e35__66[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__66[2] = 66 ; goCover_44b1aa629e35__66[3] = 1;
+	if c.v.Packets.SBPlayPlayerLoaded == protocol.Absent {goCover_44b1aa629e35__66[7] = 1;
+		return
+	}
+	goCover_44b1aa629e35__66[4] = 1;if !c.loadedSent.CompareAndSwap(false, true) {goCover_44b1aa629e35__66[8] = 1;
+		return
+	}
+	goCover_44b1aa629e35__66[5] = 1;if err := c.conn.WritePacket(protocol.NewWriter(c.v.Packets.SBPlayPlayerLoaded).Bytes()); err != nil {goCover_44b1aa629e35__66[9] = 1;
+		c.log.Warn("could not announce player loaded", "err", err)
+		return
+	}
+	goCover_44b1aa629e35__66[6] = 1;c.log.Debug("announced player loaded")
+}
+
+// Version returns the protocol version this client is speaking. It is nil
+// until Connect has resolved it, which matters when auto-detecting.
+func (c *Client) Version() *protocol.Version {goCover_44b1aa629e35__67[0] = 1 ; goCover_44b1aa629e35__67[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__67[2] = 67 ; goCover_44b1aa629e35__67[3] = 1; return c.v }

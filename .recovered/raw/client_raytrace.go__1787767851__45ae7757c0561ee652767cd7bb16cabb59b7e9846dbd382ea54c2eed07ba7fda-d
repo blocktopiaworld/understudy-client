@@ -1,0 +1,225 @@
+//line /home/smoca/work/blocktopia/blocktopia-client/client/raytrace.go:1:1
+package client
+
+import (
+	"context"
+	"fmt"
+	"math"
+	"time"
+
+	"github.com/blocktopia/client/protocol"
+)
+
+// RayHit is a block the crosshair landed on.
+type RayHit struct {
+	X        int32   `json:"x"`
+	Y        int32   `json:"y"`
+	Z        int32   `json:"z"`
+	Face     int32   `json:"face"`
+	Distance float64 `json:"distance"`
+	State    int32   `json:"state"`
+}
+
+// LookDirection converts a yaw/pitch in degrees to a unit direction vector,
+// in Minecraft's convention: yaw 0 faces +Z, and a negative pitch looks up.
+func LookDirection(yaw, pitch float32) (dx, dy, dz float64) {goCover_44b1aa629e35__142[0] = 1 ; goCover_44b1aa629e35__142[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__142[2] = 142 ; goCover_44b1aa629e35__142[3] = 1;
+	y := float64(yaw) * math.Pi / 180
+	p := float64(pitch) * math.Pi / 180
+	return -math.Sin(y) * math.Cos(p), -math.Sin(p), math.Cos(y) * math.Cos(p)
+}
+
+// RayTrace walks the voxel grid from a point along a direction and returns the
+// first targetable block within maxDist.
+//
+// This is how the game itself decides what you are pointing at, and modelling
+// it matters more than it looks: a straight-line distance check says a block
+// four metres away is reachable, but if anything is in between then the
+// crosshair is on *that* block, and what a player would actually mine is not
+// the one the caller named.
+//
+// Uses grid traversal rather than fixed-size sampling steps: stepping by a
+// fraction of a block can tunnel through a corner and miss a face, whereas
+// advancing to the next boundary visits every voxel the ray truly crosses.
+//
+// The whole walk runs under a single terrain lock, so it cannot observe a
+// half-applied block update partway along the ray.
+func (c *Client) RayTrace(ox, oy, oz, dx, dy, dz, maxDist float64) (RayHit, bool) {goCover_44b1aa629e35__143[0] = 9 ; goCover_44b1aa629e35__143[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__143[2] = 143 ; goCover_44b1aa629e35__143[3] = 1;
+	// Current voxel.
+	x, y, z := blockPos(ox, oy, oz)
+
+	stepX, stepY, stepZ := axisStep(dx), axisStep(dy), axisStep(dz)
+
+	// Distance along the ray to the next boundary on each axis, and the
+	// distance between successive boundaries.
+	tMaxX := safeDiv(boundary(ox, x, stepX), dx)
+	tMaxY := safeDiv(boundary(oy, y, stepY), dy)
+	tMaxZ := safeDiv(boundary(oz, z, stepZ), dz)
+	tDeltaX, tDeltaY, tDeltaZ := safeDiv(1, dx), safeDiv(1, dy), safeDiv(1, dz)
+
+	var hit RayHit
+	found := false
+	c.world.scan(func(at func(x, y, z int32) int32) {goCover_44b1aa629e35__143[5] = 1;
+		dist := 0.0
+		face := protocol.FaceTop
+		for dist <= maxDist {goCover_44b1aa629e35__143[6] = 1;
+			if state := at(x, y, z); c.v.IsTargetable(state) {goCover_44b1aa629e35__143[8] = 1;
+				hit = RayHit{X: x, Y: y, Z: z, Face: face, Distance: dist, State: state}
+				found = true
+				return
+			}
+			// Advance along whichever axis reaches its next boundary first, and
+			// remember which face we entered the new voxel through.
+			goCover_44b1aa629e35__143[7] = 1;switch {
+			case tMaxX <= tMaxY && tMaxX <= tMaxZ:goCover_44b1aa629e35__143[9] = 1;
+				dist, x, tMaxX = tMaxX, x+stepX, tMaxX+tDeltaX
+				face = faceForStep(stepX, protocol.FaceEast, protocol.FaceWest)
+			case tMaxY <= tMaxZ:goCover_44b1aa629e35__143[10] = 1;
+				dist, y, tMaxY = tMaxY, y+stepY, tMaxY+tDeltaY
+				face = faceForStep(stepY, protocol.FaceTop, protocol.FaceBottom)
+			default:goCover_44b1aa629e35__143[11] = 1;
+				dist, z, tMaxZ = tMaxZ, z+stepZ, tMaxZ+tDeltaZ
+				face = faceForStep(stepZ, protocol.FaceSouth, protocol.FaceNorth)
+			}
+		}
+	})
+	goCover_44b1aa629e35__143[4] = 1;return hit, found
+}
+
+// axisStep is the direction of travel along one axis. A zero component steps
+// negative, which is harmless: safeDiv gives that axis an infinite boundary
+// distance, so it is never the axis chosen to advance.
+func axisStep(d float64) int32 {goCover_44b1aa629e35__144[0] = 3 ; goCover_44b1aa629e35__144[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__144[2] = 144 ; goCover_44b1aa629e35__144[3] = 1;
+	if d > 0 {goCover_44b1aa629e35__144[5] = 1;
+		return 1
+	}
+	goCover_44b1aa629e35__144[4] = 1;return -1
+}
+
+// boundary is the distance from origin to the next voxel edge along an axis.
+func boundary(origin float64, voxel, step int32) float64 {goCover_44b1aa629e35__145[0] = 3 ; goCover_44b1aa629e35__145[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__145[2] = 145 ; goCover_44b1aa629e35__145[3] = 1;
+	if step > 0 {goCover_44b1aa629e35__145[5] = 1;
+		return float64(voxel+1) - origin
+	}
+	goCover_44b1aa629e35__145[4] = 1;return origin - float64(voxel)
+}
+
+// safeDiv divides by an axis component's magnitude, treating a zero component
+// as infinitely far — a ray parallel to an axis never crosses its boundaries.
+func safeDiv(n, d float64) float64 {goCover_44b1aa629e35__146[0] = 3 ; goCover_44b1aa629e35__146[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__146[2] = 146 ; goCover_44b1aa629e35__146[3] = 1;
+	if d == 0 {goCover_44b1aa629e35__146[5] = 1;
+		return math.Inf(1)
+	}
+	goCover_44b1aa629e35__146[4] = 1;return n / math.Abs(d)
+}
+
+// faceForStep picks the face a ray entered through: moving in +X enters the
+// west face, so the sides are swapped relative to the direction of travel.
+func faceForStep(step, positiveSide, negativeSide int32) int32 {goCover_44b1aa629e35__147[0] = 3 ; goCover_44b1aa629e35__147[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__147[2] = 147 ; goCover_44b1aa629e35__147[3] = 1;
+	if step > 0 {goCover_44b1aa629e35__147[5] = 1;
+		return negativeSide
+	}
+	goCover_44b1aa629e35__147[4] = 1;return positiveSide
+}
+
+// LookingAt returns the block the bot's crosshair is currently on, if any is
+// within reach.
+func (c *Client) LookingAt() (RayHit, bool) {goCover_44b1aa629e35__148[0] = 1 ; goCover_44b1aa629e35__148[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__148[2] = 148 ; goCover_44b1aa629e35__148[3] = 1;
+	pos := c.Position()
+	eyeX, eyeY, eyeZ := c.eyes()
+	dx, dy, dz := LookDirection(pos.Yaw, pos.Pitch)
+	return c.RayTrace(eyeX, eyeY, eyeZ, dx, dy, dz, BlockReach)
+}
+
+// sight is the outcome of a line-of-sight check.
+//
+// Three states, not a bool: "nothing was hit" and "something else was hit" need
+// different error messages, and the previous two-value form could not tell them
+// apart. It papered over that by treating a hit at 0,0,0 as "no hit", which is a
+// real coordinate — a bot working near the world origin would have been told the
+// wrong thing.
+type sight int
+
+const (
+	// sightClear means the ray landed on the requested block.
+	sightClear sight = iota
+	// sightBlocked means something else is in the way.
+	sightBlocked
+	// sightEmpty means the ray hit nothing at all within reach.
+	sightEmpty
+)
+
+// err renders a sight as an actionable error, or nil when the path is clear.
+func (s sight) err(action string, x, y, z int32, hit RayHit) error {goCover_44b1aa629e35__149[0] = 4 ; goCover_44b1aa629e35__149[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__149[2] = 149 ; goCover_44b1aa629e35__149[3] = 1;
+	switch s {
+	case sightClear:goCover_44b1aa629e35__149[4] = 1;
+		return nil
+	case sightEmpty:goCover_44b1aa629e35__149[5] = 1;
+		return fmt.Errorf("client: cannot %s block at %d,%d,%d — nothing solid along the line of sight",
+			action, x, y, z)
+	default:goCover_44b1aa629e35__149[6] = 1;
+		return fmt.Errorf("client: cannot %s block at %d,%d,%d — %d,%d,%d is in the way (%.2f blocks along)",
+			action, x, y, z, hit.X, hit.Y, hit.Z, hit.Distance)
+	}
+}
+
+// LineOfSightTo reports whether the bot could actually hit a block from where
+// it stands, and what is in the way if not.
+//
+// The check is deliberately "aim at it and see what the ray hits first",
+// because that is the question the game answers.
+//
+// Terrain that is not loaded reads as air everywhere, which would wrongly look
+// like a clear path, so an unloaded chunk reports sightClear — the caller has
+// nothing better to go on and the server will arbitrate.
+func (c *Client) LineOfSightTo(x, y, z int32) (RayHit, sight) {goCover_44b1aa629e35__150[0] = 8 ; goCover_44b1aa629e35__150[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__150[2] = 150 ; goCover_44b1aa629e35__150[3] = 1;
+	if !c.ChunkLoaded(x, z) {goCover_44b1aa629e35__150[6] = 1;
+		return RayHit{}, sightClear
+	}
+	goCover_44b1aa629e35__150[4] = 1;eyeX, eyeY, eyeZ := c.eyes()
+	// Aim at the block's centre, as LookAtBlock would.
+	tx, ty, tz := blockCentre(x, y, z)
+	dx, dy, dz := tx-eyeX, ty-eyeY, tz-eyeZ
+	dist := length(dx, dy, dz)
+	if dist == 0 {goCover_44b1aa629e35__150[7] = 1;
+		return RayHit{}, sightEmpty
+	}
+	goCover_44b1aa629e35__150[5] = 1;hit, ok := c.RayTrace(eyeX, eyeY, eyeZ, dx/dist, dy/dist, dz/dist, BlockReach)
+	switch {
+	case !ok:goCover_44b1aa629e35__150[8] = 1;
+		return RayHit{}, sightEmpty
+	case hit.X == x && hit.Y == y && hit.Z == z:goCover_44b1aa629e35__150[9] = 1;
+		return hit, sightClear
+	default:goCover_44b1aa629e35__150[10] = 1;
+		return hit, sightBlocked
+	}
+}
+
+// HasLineOfSight reports whether the crosshair would land on a block, for
+// callers that only need the yes/no answer.
+func (c *Client) HasLineOfSight(x, y, z int32) bool {goCover_44b1aa629e35__151[0] = 1 ; goCover_44b1aa629e35__151[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__151[2] = 151 ; goCover_44b1aa629e35__151[3] = 1;
+	_, s := c.LineOfSightTo(x, y, z)
+	return s == sightClear
+}
+
+// DigLookingAt breaks whatever the crosshair is on.
+//
+// This is the game's own model — aim, then mine what you are pointing at —
+// and it is the safer primitive: the face comes from the ray rather than being
+// guessed, and there is no way to name a block the bot cannot actually hit.
+func (c *Client) DigLookingAt(ctx context.Context, hold time.Duration) (RayHit, error) {goCover_44b1aa629e35__152[0] = 5 ; goCover_44b1aa629e35__152[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__152[2] = 152 ; goCover_44b1aa629e35__152[3] = 1;
+	hit, ok := c.LookingAt()
+	if !ok {goCover_44b1aa629e35__152[6] = 1;
+		pos := c.Position()
+		return RayHit{}, fmt.Errorf(
+			"client: nothing solid within %.1f blocks of the crosshair (yaw %.1f, pitch %.1f)",
+			BlockReach, pos.Yaw, pos.Pitch)
+	}
+	goCover_44b1aa629e35__152[4] = 1;if err := c.StartDig(ctx, hit.X, hit.Y, hit.Z, hit.Face); err != nil {goCover_44b1aa629e35__152[7] = 1;
+		return hit, err
+	}
+	// Shares awaitBreak with DigBlock rather than running its own fixed-hold
+	// loop. The two had drifted: this path always waited out the full hold and
+	// always sent FinishDig, so it was slower on a fast tool and gave up early
+	// on a slow one — the exact pair of bugs awaitBreak exists to avoid.
+	goCover_44b1aa629e35__152[5] = 1;return hit, c.awaitBreak(ctx, hit.X, hit.Y, hit.Z, hit.Face, hold)
+}

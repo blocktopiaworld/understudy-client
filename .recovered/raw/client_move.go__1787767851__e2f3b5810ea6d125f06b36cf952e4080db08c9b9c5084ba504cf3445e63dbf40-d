@@ -1,0 +1,120 @@
+//line /home/smoca/work/blocktopia/blocktopia-client/client/move.go:1:1
+package client
+
+import (
+	"context"
+	"time"
+
+	"github.com/blocktopia/client/protocol"
+)
+
+// TickRate is the server tick, and the natural cadence for movement updates.
+// A real client sends position roughly once per tick; sending far faster is
+// wasted, and sending far slower makes movement look like teleporting and
+// risks a "moved too quickly" rejection.
+const TickRate = 50 * time.Millisecond
+
+// WalkSpeed is a player's normal walking speed in blocks per second.
+const WalkSpeed = 4.317
+
+// movementFlags builds the trailing flags byte. onGround matters: a bot that
+// always claims to be airborne is a bot the server may treat as flying.
+func movementFlags(onGround bool) uint8 {goCover_44b1aa629e35__130[0] = 3 ; goCover_44b1aa629e35__130[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__130[2] = 130 ; goCover_44b1aa629e35__130[3] = 1;
+	if onGround {goCover_44b1aa629e35__130[5] = 1;
+		return protocol.MovementOnGround
+	}
+	goCover_44b1aa629e35__130[4] = 1;return 0
+}
+
+// MoveTo sets the bot's position directly in a single packet.
+//
+// The server validates how far a player moved in one update and rejects
+// implausible jumps, so this is only safe for short hops. Use WalkTo to cover
+// distance, or an RCON teleport to cross the world.
+func (c *Client) MoveTo(x, y, z float64) error {goCover_44b1aa629e35__131[0] = 3 ; goCover_44b1aa629e35__131[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__131[2] = 131 ; goCover_44b1aa629e35__131[3] = 1;
+	if err := c.requireAlive("move"); err != nil {goCover_44b1aa629e35__131[5] = 1;
+		return err
+	}
+	goCover_44b1aa629e35__131[4] = 1;return c.writePosition(x, y, z, c.OnGround())
+}
+
+// sendPosition writes a movement packet with an explicit on-ground flag.
+//
+// The flag is the whole point: the server derives fall damage from the
+// *client's* reported descent and applies it on the transition back to
+// on-ground. Falling is therefore something the bot performs, not something
+// the server does to it.
+func (c *Client) sendPosition(x, y, z float64, onGround bool) error {goCover_44b1aa629e35__132[0] = 1 ; goCover_44b1aa629e35__132[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__132[2] = 132 ; goCover_44b1aa629e35__132[3] = 1;
+	return c.writePosition(x, y, z, onGround)
+}
+
+// writePosition records the new position and sends it. It is the single place
+// an outbound position packet is built, so the local state and what the server
+// is told can never drift apart.
+func (c *Client) writePosition(x, y, z float64, onGround bool) error {goCover_44b1aa629e35__133[0] = 3 ; goCover_44b1aa629e35__133[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__133[2] = 133 ; goCover_44b1aa629e35__133[3] = 1;
+	c.mu.Lock()
+	c.pos.X, c.pos.Y, c.pos.Z = x, y, z
+	yaw, pitch := c.pos.Yaw, c.pos.Pitch
+	c.onGround = onGround
+	c.mu.Unlock()
+
+	w := protocol.NewWriter(c.v.Packets.SBPlayPositionLook).
+		F64(x).F64(y).F64(z).
+		F32(yaw).F32(pitch).
+		U8(movementFlags(onGround))
+	if err := c.conn.WritePacket(w.Bytes()); err != nil {goCover_44b1aa629e35__133[5] = 1;
+		return err
+	}
+	// Tell the idle loop it need not speak this tick.
+	goCover_44b1aa629e35__133[4] = 1;c.markPositionSent()
+	return nil
+}
+
+// WalkTo moves the bot to a target at walking speed, one step per tick.
+//
+// This is dead reckoning, not pathfinding: it walks a straight line and does
+// not know about walls, drops or water. That is deliberate — the harness
+// teleports bots into arenas it built itself, so the only movement that needs
+// to be believable is short and local.
+func (c *Client) WalkTo(ctx context.Context, x, y, z float64) error {goCover_44b1aa629e35__134[0] = 9 ; goCover_44b1aa629e35__134[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__134[2] = 134 ; goCover_44b1aa629e35__134[3] = 1;
+	if err := c.requireAlive("walk"); err != nil {goCover_44b1aa629e35__134[5] = 1;
+		return err
+	}
+	goCover_44b1aa629e35__134[4] = 1;step := WalkSpeed * TickRate.Seconds()
+	ticker := time.NewTicker(TickRate)
+	defer ticker.Stop()
+
+	for {goCover_44b1aa629e35__134[6] = 1;
+		pos := c.Position()
+		dx, dy, dz := x-pos.X, y-pos.Y, z-pos.Z
+		dist := length(dx, dy, dz)
+		if dist <= step {goCover_44b1aa629e35__134[9] = 1;
+			return c.MoveTo(x, y, z)
+		}
+		goCover_44b1aa629e35__134[7] = 1;scale := step / dist
+		if err := c.MoveTo(pos.X+dx*scale, pos.Y+dy*scale, pos.Z+dz*scale); err != nil {goCover_44b1aa629e35__134[10] = 1;
+			return err
+		}
+		goCover_44b1aa629e35__134[8] = 1;if err := sleep(ctx, ticker.C); err != nil {goCover_44b1aa629e35__134[11] = 1;
+			return err
+		}
+	}
+}
+
+// sleep waits for a tick or for ctx to be cancelled, reporting cancellation as
+// an error so a caller can propagate it with a bare check.
+func sleep(ctx context.Context, tick <-chan time.Time) error {goCover_44b1aa629e35__135[0] = 3 ; goCover_44b1aa629e35__135[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__135[2] = 135 ; goCover_44b1aa629e35__135[3] = 1;
+	select {
+	case <-ctx.Done():goCover_44b1aa629e35__135[4] = 1;
+		return ctx.Err()
+	case <-tick:goCover_44b1aa629e35__135[5] = 1;
+		return nil
+	}
+}
+
+// wait blocks for d, or until ctx is cancelled.
+func wait(ctx context.Context, d time.Duration) error {goCover_44b1aa629e35__136[0] = 1 ; goCover_44b1aa629e35__136[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__136[2] = 136 ; goCover_44b1aa629e35__136[3] = 1;
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	return sleep(ctx, timer.C)
+}

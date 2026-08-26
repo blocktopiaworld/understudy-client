@@ -1,0 +1,26 @@
+//line /home/smoca/work/blocktopia/blocktopia-client/client/dump.go:1:1
+package client
+
+import (
+	"os"
+	"sync"
+)
+
+// dumpChunkBlob writes the first raw chunkData payload to the path in
+// BLW_DUMP_CHUNK, if set.
+//
+// Chunk framing is the one part of this protocol that cannot be reasoned out
+// from a field list: a mistake shows up as a short read many sections later,
+// nowhere near the actual error. Having the real bytes to measure against
+// turns that into arithmetic.
+var dumpOnce sync.Once
+
+func dumpChunkBlob(blob []byte) {goCover_44b1aa629e35__39[0] = 4 ; goCover_44b1aa629e35__39[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__39[2] = 39 ; goCover_44b1aa629e35__39[3] = 1;
+	path := os.Getenv("BLW_DUMP_CHUNK")
+	if path == "" {goCover_44b1aa629e35__39[5] = 1;
+		return
+	}
+	goCover_44b1aa629e35__39[4] = 1;dumpOnce.Do(func() {goCover_44b1aa629e35__39[6] = 1;
+		_ = os.WriteFile(path, blob, 0o644)
+	})
+}

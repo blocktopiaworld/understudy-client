@@ -39,7 +39,7 @@ func (c *Client) handshake() error {
 func (c *Client) login(ctx context.Context) error {
 	w := protocol.NewWriter(c.v.Packets.SBLoginStart).
 		String(c.opts.Username).
-		UUID(c.UUID)
+		UUID(c.UUID())
 	if err := c.conn.WritePacket(w.Bytes()); err != nil {
 		return err
 	}
@@ -86,12 +86,14 @@ func (c *Client) loginSuccess(p protocol.Packet) (bool, error) {
 		return false, err
 	}
 	c.log.Info("login success", "username", name, "uuid", uuid.String())
-	if uuid != c.UUID {
+	if uuid != c.UUID() {
 		// Not fatal, but it means assertions keyed on the derived UUID would
 		// look at the wrong player, so it must be visible.
 		c.log.Warn("server assigned a different uuid than derived",
-			"derived", c.UUID.String(), "assigned", uuid.String())
-		c.UUID = uuid
+			"derived", c.UUID().String(), "assigned", uuid.String())
+		c.mu.Lock()
+		c.uuid = uuid
+		c.mu.Unlock()
 	}
 	if err := c.conn.WritePacket(
 		protocol.NewWriter(c.v.Packets.SBLoginAcknowledged).Bytes()); err != nil {

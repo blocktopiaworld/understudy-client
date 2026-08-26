@@ -1,0 +1,66 @@
+//line /home/smoca/work/blocktopia/blocktopia-client/client/settle.go:1:1
+package client
+
+import (
+	"context"
+	"time"
+)
+
+// TeleportSettle is how long after answering a teleport the server needs
+// before it will act on a block interaction.
+//
+// A teleport is not finished when the client agrees it moved. The server keeps
+// the player in an "awaiting position from client" state and, while that lasts,
+// silently ignores use_item, use_item_on and player_action — the three packets
+// behind eating, placing and digging. There is no rejection and no feedback:
+// the action simply does not happen.
+//
+// Mining never showed the problem because awaitBreak keeps swinging and
+// re-sends the finish packet, so it retries through the window by accident. A
+// one-shot place has no such luck and just vanishes.
+//
+// Measured from fresh sessions against a golem pattern: 2/4 placements
+// succeeded with no pause, 4/4 with a 300ms pause, and 4/4 if any real block
+// interaction had gone first. A bare arm swing did *not* help, which is what
+// rules out "the session is not warm yet" and points at this specific gate.
+//
+// 300ms is the measured floor; the value here carries a small margin over it
+// because the cost is only ever paid immediately after a teleport.
+const TeleportSettle = 350 * time.Millisecond
+
+// markTeleportEcho stamps when the reply to a server teleport went out.
+func (c *Client) markTeleportEcho() {goCover_44b1aa629e35__163[0] = 1 ; goCover_44b1aa629e35__163[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__163[2] = 163 ; goCover_44b1aa629e35__163[3] = 1; c.lastTeleportEcho.Store(time.Now().UnixNano()) }
+
+// teleportSettleRemaining reports how much of the settle window is left.
+func (c *Client) teleportSettleRemaining() time.Duration {goCover_44b1aa629e35__164[0] = 5 ; goCover_44b1aa629e35__164[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__164[2] = 164 ; goCover_44b1aa629e35__164[3] = 1;
+	last := c.lastTeleportEcho.Load()
+	if last == 0 {goCover_44b1aa629e35__164[6] = 1;
+		return 0 // no teleport this session; nothing to wait for
+	}
+	goCover_44b1aa629e35__164[4] = 1;remaining := TeleportSettle - time.Since(time.Unix(0, last))
+	if remaining < 0 {goCover_44b1aa629e35__164[7] = 1;
+		return 0
+	}
+	goCover_44b1aa629e35__164[5] = 1;return remaining
+}
+
+// awaitTeleportSettle blocks until the server will accept a block interaction.
+//
+// It costs nothing in the common case — the window is measured from the last
+// teleport, so a bot that has been standing still, or mining in a loop, has
+// already waited it out and this returns immediately. Only the first
+// interaction after a teleport pays anything, and it pays only the remainder.
+//
+// This lives in the client rather than in whatever drives it because it is a
+// property of the protocol, not of any one scenario. A driver that sleeps after
+// every teleport pays the cost even when it is about to do nothing; a driver
+// that forgets loses actions silently. Gating the packets that are actually
+// affected is both cheaper and impossible to forget.
+func (c *Client) awaitTeleportSettle(ctx context.Context) error {goCover_44b1aa629e35__165[0] = 3 ; goCover_44b1aa629e35__165[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__165[2] = 165 ; goCover_44b1aa629e35__165[3] = 1;
+	remaining := c.teleportSettleRemaining()
+	if remaining <= 0 {goCover_44b1aa629e35__165[5] = 1;
+		return nil
+	}
+	goCover_44b1aa629e35__165[4] = 1;c.log.Debug("waiting out the teleport settle window", "remaining", remaining)
+	return wait(ctx, remaining)
+}

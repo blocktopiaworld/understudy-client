@@ -1,0 +1,193 @@
+//line /home/smoca/work/blocktopia/blocktopia-client/client/craft.go:1:1
+package client
+
+import (
+	"context"
+	"fmt"
+	"sort"
+	"strings"
+	"time"
+)
+
+// The player's own 2x2 crafting grid lives in window 0, so using it needs no
+// container to be opened and no window bookkeeping — which makes it the
+// cheapest way to craft anything with a 2x2 recipe.
+const (
+	SlotCraftGrid2x2Start = 1 // slots 1..4
+	SlotCraftGrid2x2End   = 4
+)
+
+// clickDelay paces container clicks.
+//
+// The server applies each click in order and echoes the resulting slots back.
+// Firing them back to back means later clicks are computed against an
+// inventory the client has not seen yet, and a mis-sequenced craft silently
+// produces nothing.
+const clickDelay = 3 * TickRate
+
+// CraftIn2x2 crafts using the player's own 2x2 grid.
+//
+// layout maps a grid slot (1..4) to the item that belongs there, so a caller
+// expresses a recipe positionally rather than this package carrying a recipe
+// table. Shapeless recipes simply use whichever slots are convenient.
+//
+// The crafted stack is pulled out with a quick-move, which is what makes the
+// crafted/* statistic tick — taking the result is the act that counts, not
+// assembling the ingredients.
+func (c *Client) CraftIn2x2(ctx context.Context, layout map[int]string) (ItemStack, error) {goCover_44b1aa629e35__68[0] = 6 ; goCover_44b1aa629e35__68[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__68[2] = 68 ; goCover_44b1aa629e35__68[3] = 1;
+	if err := c.requireAlive("craft"); err != nil {goCover_44b1aa629e35__68[6] = 1;
+		return ItemStack{}, err
+	}
+	goCover_44b1aa629e35__68[4] = 1;for slot := range layout {goCover_44b1aa629e35__68[7] = 1;
+		if slot < SlotCraftGrid2x2Start || slot > SlotCraftGrid2x2End {goCover_44b1aa629e35__68[8] = 1;
+			return ItemStack{}, fmt.Errorf("client: grid slot %d is outside the 2x2 grid (1..4)", slot)
+		}
+	}
+	goCover_44b1aa629e35__68[5] = 1;return c.craftUsingGrid(ctx, layout)
+}
+
+// findInStorage locates an item in the storage slots only.
+//
+// Deliberately not FindItem: that searches every tracked slot, including the
+// crafting grid itself. Mid-craft that means the "ingredient" it finds can be
+// the one just placed into the grid, so the loop picks its own work back up
+// and only ever assembles a single-item recipe. That produced an oak_button
+// from four planks — a valid recipe, just not the intended one.
+func (c *Client) findInStorage(name string) (ItemStack, bool) {goCover_44b1aa629e35__69[0] = 8 ; goCover_44b1aa629e35__69[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__69[2] = 69 ; goCover_44b1aa629e35__69[3] = 1;
+	want := name
+	if !strings.Contains(want, ":") {goCover_44b1aa629e35__69[6] = 1;
+		want = "minecraft:" + want
+	}
+	goCover_44b1aa629e35__69[4] = 1;for _, it := range c.Inventory() {goCover_44b1aa629e35__69[7] = 1;
+		if it.Slot < SlotMainStart || it.Slot > SlotHotbarEnd {goCover_44b1aa629e35__69[9] = 1;
+			continue
+		}
+		goCover_44b1aa629e35__69[8] = 1;if it.Name == want || strings.HasSuffix(it.Name, "_"+strings.TrimPrefix(name, "minecraft:")) {goCover_44b1aa629e35__69[10] = 1;
+			return it, true
+		}
+	}
+	goCover_44b1aa629e35__69[5] = 1;return ItemStack{}, false
+}
+
+// craftUsingGrid performs the click sequence common to any crafting grid.
+func (c *Client) craftUsingGrid(ctx context.Context, layout map[int]string) (ItemStack, error) {goCover_44b1aa629e35__70[0] = 37 ; goCover_44b1aa629e35__70[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__70[2] = 70 ; goCover_44b1aa629e35__70[3] = 1;
+	pause := func() error {goCover_44b1aa629e35__70[14] = 1;
+		select {
+		case <-ctx.Done():goCover_44b1aa629e35__70[15] = 1;
+			return ctx.Err()
+		case <-time.After(clickDelay):goCover_44b1aa629e35__70[16] = 1;
+			return nil
+		}
+	}
+
+	// Start from an empty grid. Leftovers change what the recipe resolves to,
+	// and a stale output slot would otherwise be mistaken for this craft's
+	// result — which is how an impossible layout reports success.
+	goCover_44b1aa629e35__70[4] = 1;if err := c.ClearCraftingGrid(ctx); err != nil {goCover_44b1aa629e35__70[17] = 1;
+		return ItemStack{}, err
+	}
+	goCover_44b1aa629e35__70[5] = 1;if err := pause(); err != nil {goCover_44b1aa629e35__70[18] = 1;
+		return ItemStack{}, err
+	}
+
+	// Deterministic order, so a failure is reproducible.
+	goCover_44b1aa629e35__70[6] = 1;slots := make([]int, 0, len(layout))
+	for slot := range layout {goCover_44b1aa629e35__70[19] = 1;
+		slots = append(slots, slot)
+	}
+	goCover_44b1aa629e35__70[7] = 1;sort.Ints(slots)
+
+	for _, gridSlot := range slots {goCover_44b1aa629e35__70[20] = 1;
+		itemName := layout[gridSlot]
+		src, ok := c.findInStorage(itemName)
+		if !ok {goCover_44b1aa629e35__70[27] = 1;
+			return ItemStack{}, fmt.Errorf("client: no %q in inventory to craft with", itemName)
+		}
+		// Pick the stack up, drop one into the grid, then put the rest back.
+		// Right-click (button 1) places a single item, which is what keeps a
+		// recipe needing one log from consuming the whole stack.
+		goCover_44b1aa629e35__70[21] = 1;if err := c.clickSlot(src.Slot, 0, ClickModeNormal); err != nil {goCover_44b1aa629e35__70[28] = 1;
+			return ItemStack{}, err
+		}
+		goCover_44b1aa629e35__70[22] = 1;if err := pause(); err != nil {goCover_44b1aa629e35__70[29] = 1;
+			return ItemStack{}, err
+		}
+		goCover_44b1aa629e35__70[23] = 1;if err := c.clickSlot(gridSlot, 1, ClickModeNormal); err != nil {goCover_44b1aa629e35__70[30] = 1;
+			return ItemStack{}, err
+		}
+		goCover_44b1aa629e35__70[24] = 1;if err := pause(); err != nil {goCover_44b1aa629e35__70[31] = 1;
+			return ItemStack{}, err
+		}
+		goCover_44b1aa629e35__70[25] = 1;if err := c.clickSlot(src.Slot, 0, ClickModeNormal); err != nil {goCover_44b1aa629e35__70[32] = 1;
+			return ItemStack{}, err
+		}
+		goCover_44b1aa629e35__70[26] = 1;if err := pause(); err != nil {goCover_44b1aa629e35__70[33] = 1;
+			return ItemStack{}, err
+		}
+	}
+
+	// Let the server settle the grid and compute the result before reaching
+	// for the output slot, which is empty until it has.
+	goCover_44b1aa629e35__70[8] = 1;if err := pause(); err != nil {goCover_44b1aa629e35__70[34] = 1;
+		return ItemStack{}, err
+	}
+	// Confirm every requested slot actually received its ingredient before
+	// trusting the output; a partially filled grid can still resolve to some
+	// other valid recipe.
+	goCover_44b1aa629e35__70[9] = 1;for _, gridSlot := range slots {goCover_44b1aa629e35__70[35] = 1;
+		if _, filled := c.slotAt(gridSlot); !filled {goCover_44b1aa629e35__70[36] = 1;
+			return ItemStack{}, fmt.Errorf(
+				"client: grid slot %d never received %q — the craft would have made "+
+					"whatever the partial layout resolves to", gridSlot, layout[gridSlot])
+		}
+	}
+
+	goCover_44b1aa629e35__70[10] = 1;result, hasResult := c.slotAt(SlotCraftOutput)
+	if !hasResult {goCover_44b1aa629e35__70[37] = 1;
+		return ItemStack{}, fmt.Errorf(
+			"client: nothing in the crafting output — the layout %v is not a valid recipe, "+
+				"or the ingredients did not reach the grid", layout)
+	}
+
+	// Quick-move the output into the inventory. This is the click that credits
+	// the crafted statistic.
+	goCover_44b1aa629e35__70[11] = 1;if err := c.clickSlot(SlotCraftOutput, 0, ClickModeQuickMove); err != nil {goCover_44b1aa629e35__70[38] = 1;
+		return result, err
+	}
+	goCover_44b1aa629e35__70[12] = 1;if err := pause(); err != nil {goCover_44b1aa629e35__70[39] = 1;
+		return result, err
+	}
+	goCover_44b1aa629e35__70[13] = 1;return result, nil
+}
+
+// slotAt returns the contents of a specific slot.
+func (c *Client) slotAt(slot int) (ItemStack, bool) {goCover_44b1aa629e35__71[0] = 4 ; goCover_44b1aa629e35__71[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__71[2] = 71 ; goCover_44b1aa629e35__71[3] = 1;
+	for _, it := range c.Inventory() {goCover_44b1aa629e35__71[5] = 1;
+		if it.Slot == slot {goCover_44b1aa629e35__71[6] = 1;
+			return it, true
+		}
+	}
+	goCover_44b1aa629e35__71[4] = 1;return ItemStack{}, false
+}
+
+// ClearCraftingGrid returns anything left in the 2x2 grid to the inventory.
+//
+// Worth calling between crafts: leftovers in the grid change what the next
+// recipe resolves to, and they are dropped on the floor when the inventory
+// closes — which then quietly alters any nearby pickup or hold count.
+func (c *Client) ClearCraftingGrid(ctx context.Context) error {goCover_44b1aa629e35__72[0] = 9 ; goCover_44b1aa629e35__72[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__72[2] = 72 ; goCover_44b1aa629e35__72[3] = 1;
+	for slot := SlotCraftGrid2x2Start; slot <= SlotCraftGrid2x2End; slot++ {goCover_44b1aa629e35__72[5] = 1;
+		if _, occupied := c.slotAt(slot); !occupied {goCover_44b1aa629e35__72[8] = 1;
+			continue
+		}
+		goCover_44b1aa629e35__72[6] = 1;if err := c.clickSlot(slot, 0, ClickModeQuickMove); err != nil {goCover_44b1aa629e35__72[9] = 1;
+			return err
+		}
+		goCover_44b1aa629e35__72[7] = 1;select {
+		case <-ctx.Done():goCover_44b1aa629e35__72[10] = 1;
+			return ctx.Err()
+		case <-time.After(clickDelay):goCover_44b1aa629e35__72[11] = 1;
+		}
+	}
+	goCover_44b1aa629e35__72[4] = 1;return nil
+}

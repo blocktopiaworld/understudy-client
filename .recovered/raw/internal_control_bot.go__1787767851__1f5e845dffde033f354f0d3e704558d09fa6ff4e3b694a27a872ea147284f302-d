@@ -1,0 +1,103 @@
+//line /home/smoca/work/blocktopia/blocktopia-client/internal/control/bot.go:1:1
+package control
+
+import (
+	"context"
+	"time"
+
+	"github.com/blocktopia/client/client"
+	"github.com/blocktopia/client/protocol"
+)
+
+// Bot is the slice of a client the control API drives.
+//
+// An interface rather than *client.Client so the handlers can be exercised
+// against a stub. That is not a theoretical benefit: these handlers hold the
+// argument parsing, the defaulting and the response shape for every verb, and
+// none of it was reachable by a test while the only way to obtain the
+// dependency was to connect to a Minecraft server.
+//
+// It is deliberately wide — one method per verb, mirroring the client — rather
+// than an abstraction over what a bot "is". Narrowing it would mean inventing a
+// vocabulary that has to be kept in step with the real one.
+type Bot interface {
+	// identity and state
+	Username() string
+	State() protocol.State
+	EntityID() int32
+	Joined() bool
+	Dead() bool
+	Deaths() int
+	Health() (health float32, food int32)
+	Position() client.Position
+	Version() *protocol.Version
+
+	// looking
+	Look(yaw, pitch float32) error
+	LookDirection(name string) error
+	LookYawPitch(yaw, pitch *float32) error
+	LookAt(x, y, z float64) error
+	LookAtBlock(x, y, z int32) error
+	LookAtNearest(typeName string) (client.Entity, error)
+	LookAtPlayer(name string) (client.Entity, error)
+	LookingAt() (client.RayHit, bool)
+
+	// moving
+	MoveTo(x, y, z float64) error
+	WalkTo(ctx context.Context, x, y, z float64) error
+	Fall(ctx context.Context) (float64, error)
+	FallTo(ctx context.Context, groundY float64) (float64, error)
+	Sneak(ctx context.Context, d time.Duration) error
+
+	// inventory
+	Inventory() []client.ItemStack
+	HeldItem() (client.ItemStack, bool)
+	HeldSlot() int
+	SetHeldSlot(slot int) error
+	HoldItem(name string) (client.ItemStack, error)
+	DropHeld(ctx context.Context, all bool) error
+	EquipArmour(name string) (client.ItemStack, error)
+	InventoryTruncated() bool
+	CountItem(name string) int32
+	CountItemStorage(name string) int32
+	FreeStorageSlots() int
+	SlotsNeeded(name string, count int32) (int, bool)
+	PickupsSeen() (int32, map[string]int32)
+
+	// world
+	BlockAt(x, y, z int32) int32
+	ChunkLoaded(x, z int32) bool
+	LoadedChunks() int
+	GroundBelow() client.Support
+	Submerged() bool
+	BlockDistance(x, y, z int32) float64
+	CanReachBlock(x, y, z int32) bool
+
+	// entities
+	Entities() []client.Entity
+	EntitiesOfType(typeName string) []client.Entity
+	DistanceTo(e client.Entity) float64
+	Attack(entityID int32) error
+	AttackTimes(ctx context.Context, typeName string, times int) (client.Entity, error)
+	InteractEntity(entityID int32) error
+	InteractNearest(typeName string) (client.Entity, error)
+
+	// acting on the world
+	Swing() error
+	DigBlock(ctx context.Context, x, y, z, face int32, hold time.Duration) error
+	DigBlocks(ctx context.Context, blocks [][3]int32, face int32, hold time.Duration) (int, error)
+	DigLookingAt(ctx context.Context, hold time.Duration) (client.RayHit, error)
+	PlaceBlock(ctx context.Context, x, y, z, face int32) error
+	PlaceBlockVerified(ctx context.Context, x, y, z, face int32) error
+	UseItem(ctx context.Context) error
+	Consume(ctx context.Context) error
+	ConsumeItem(ctx context.Context, name string) (client.ItemStack, error)
+	CraftIn2x2(ctx context.Context, layout map[int]string) (client.ItemStack, error)
+	ShootAt(ctx context.Context, x, y, z float64, draw time.Duration) error
+	ShootBlock(ctx context.Context, x, y, z int32, draw time.Duration) error
+	ShootNearest(ctx context.Context, typeName string, draw time.Duration) (client.Entity, error)
+}
+
+// A *client.Client must satisfy Bot. Checked at compile time so a signature
+// change in the client surfaces here rather than at the one call site in main.
+var _ Bot = (*client.Client)(nil)

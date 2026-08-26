@@ -1,0 +1,137 @@
+//line /home/smoca/work/blocktopia/blocktopia-client/client/look.go:1:1
+package client
+
+import (
+	"fmt"
+	"slices"
+	"strings"
+
+	"github.com/blocktopia/client/protocol"
+)
+
+// Direction is a named heading, as a rotation the bot can be pointed along.
+//
+// A nil component means "leave this axis alone", which is what makes Up and
+// Down usable: they tilt without throwing away the current heading.
+type Direction struct{ Yaw, Pitch *float32 }
+
+// directions maps Minecraft's named directions to a rotation, matching the
+// vocabulary of Carpet's `/player <name> look <direction>`.
+//
+// Unexported with a lookup function rather than an exported map: a package
+// variable holding a map is mutable by every caller, so one scenario could
+// redefine "north" for the whole process.
+//
+// See yawPitchTowards for the yaw convention, which is not the intuitive one.
+var directions = map[string]Direction{
+	"south":     {Yaw: f32p(0), Pitch: f32p(0)},
+	"west":      {Yaw: f32p(90), Pitch: f32p(0)},
+	"north":     {Yaw: f32p(180), Pitch: f32p(0)},
+	"east":      {Yaw: f32p(-90), Pitch: f32p(0)},
+	"southwest": {Yaw: f32p(45), Pitch: f32p(0)},
+	"northwest": {Yaw: f32p(135), Pitch: f32p(0)},
+	"northeast": {Yaw: f32p(-135), Pitch: f32p(0)},
+	"southeast": {Yaw: f32p(-45), Pitch: f32p(0)},
+	"up":        {Pitch: f32p(-90)},
+	"down":      {Pitch: f32p(90)},
+}
+
+func f32p(v float32) *float32 {goCover_44b1aa629e35__119[0] = 1 ; goCover_44b1aa629e35__119[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__119[2] = 119 ; goCover_44b1aa629e35__119[3] = 1; return &v }
+
+// LookupDirection resolves a direction name, case- and space-insensitively.
+func LookupDirection(name string) (Direction, bool) {goCover_44b1aa629e35__120[0] = 1 ; goCover_44b1aa629e35__120[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__120[2] = 120 ; goCover_44b1aa629e35__120[3] = 1;
+	d, ok := directions[strings.ToLower(strings.TrimSpace(name))]
+	return d, ok
+}
+
+// DirectionNames lists the accepted direction names, sorted, for error
+// messages and help text.
+func DirectionNames() []string {goCover_44b1aa629e35__121[0] = 3 ; goCover_44b1aa629e35__121[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__121[2] = 121 ; goCover_44b1aa629e35__121[3] = 1;
+	names := make([]string, 0, len(directions))
+	for name := range directions {goCover_44b1aa629e35__121[5] = 1;
+		names = append(names, name)
+	}
+	goCover_44b1aa629e35__121[4] = 1;slices.Sort(names)
+	return names
+}
+
+// Look points the bot at an absolute yaw/pitch, in degrees.
+func (c *Client) Look(yaw, pitch float32) error {goCover_44b1aa629e35__122[0] = 3 ; goCover_44b1aa629e35__122[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__122[2] = 122 ; goCover_44b1aa629e35__122[3] = 1;
+	if err := c.requireAlive("look"); err != nil {goCover_44b1aa629e35__122[5] = 1;
+		return err
+	}
+	goCover_44b1aa629e35__122[4] = 1;c.mu.Lock()
+	c.pos.Yaw, c.pos.Pitch = yaw, pitch
+	onGround := c.onGround
+	c.mu.Unlock()
+
+	w := protocol.NewWriter(c.v.Packets.SBPlayLook).
+		F32(yaw).F32(pitch).U8(movementFlags(onGround))
+	return c.conn.WritePacket(w.Bytes())
+}
+
+// LookDirection points the bot along a named direction.
+func (c *Client) LookDirection(name string) error {goCover_44b1aa629e35__123[0] = 3 ; goCover_44b1aa629e35__123[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__123[2] = 123 ; goCover_44b1aa629e35__123[3] = 1;
+	dir, ok := LookupDirection(name)
+	if !ok {goCover_44b1aa629e35__123[5] = 1;
+		return fmt.Errorf("client: unknown direction %q (want one of %s)",
+			name, strings.Join(DirectionNames(), ", "))
+	}
+	goCover_44b1aa629e35__123[4] = 1;return c.LookYawPitch(dir.Yaw, dir.Pitch)
+}
+
+// LookYawPitch updates either axis independently. A nil component is left
+// unchanged, so a caller can pan without re-deriving the current tilt.
+func (c *Client) LookYawPitch(yaw, pitch *float32) error {goCover_44b1aa629e35__124[0] = 5 ; goCover_44b1aa629e35__124[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__124[2] = 124 ; goCover_44b1aa629e35__124[3] = 1;
+	pos := c.Position()
+	newYaw, newPitch := pos.Yaw, pos.Pitch
+	if yaw != nil {goCover_44b1aa629e35__124[6] = 1;
+		newYaw = *yaw
+	}
+	goCover_44b1aa629e35__124[4] = 1;if pitch != nil {goCover_44b1aa629e35__124[7] = 1;
+		newPitch = *pitch
+	}
+	goCover_44b1aa629e35__124[5] = 1;return c.Look(newYaw, newPitch)
+}
+
+// LookAt points the bot at an exact world coordinate.
+func (c *Client) LookAt(x, y, z float64) error {goCover_44b1aa629e35__125[0] = 1 ; goCover_44b1aa629e35__125[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__125[2] = 125 ; goCover_44b1aa629e35__125[3] = 1;
+	eyeX, eyeY, eyeZ := c.eyes()
+	yaw, pitch := yawPitchTowards(eyeX, eyeY, eyeZ, x, y, z)
+	return c.Look(yaw, pitch)
+}
+
+// LookAtBlock points the bot at the centre of a block.
+//
+// Block coordinates name a corner, so aiming at the raw integer targets the
+// seam between four blocks and the ray can land on a neighbour. The classic
+// symptom is a mining loop that stalls one block short of its target.
+func (c *Client) LookAtBlock(x, y, z int32) error {goCover_44b1aa629e35__126[0] = 1 ; goCover_44b1aa629e35__126[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__126[2] = 126 ; goCover_44b1aa629e35__126[3] = 1;
+	return c.LookAt(blockCentre(x, y, z))
+}
+
+// LookAtEntity faces a tracked entity, aiming at roughly body height rather
+// than at its feet.
+func (c *Client) LookAtEntity(e Entity) error {goCover_44b1aa629e35__127[0] = 1 ; goCover_44b1aa629e35__127[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__127[2] = 127 ; goCover_44b1aa629e35__127[3] = 1;
+	return c.LookAt(e.X, e.Y+MobAimHeight, e.Z)
+}
+
+// LookAtNearest faces the closest tracked entity of a type.
+func (c *Client) LookAtNearest(typeName string) (Entity, error) {goCover_44b1aa629e35__128[0] = 3 ; goCover_44b1aa629e35__128[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__128[2] = 128 ; goCover_44b1aa629e35__128[3] = 1;
+	target, err := c.NearestEntity(typeName)
+	if err != nil {goCover_44b1aa629e35__128[5] = 1;
+		return Entity{}, err
+	}
+	goCover_44b1aa629e35__128[4] = 1;return target, c.LookAtEntity(target)
+}
+
+// LookAtPlayer faces a named player, aiming at their head rather than feet.
+func (c *Client) LookAtPlayer(name string) (Entity, error) {goCover_44b1aa629e35__129[0] = 3 ; goCover_44b1aa629e35__129[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__129[2] = 129 ; goCover_44b1aa629e35__129[3] = 1;
+	target, err := c.PlayerEntity(name)
+	if err != nil {goCover_44b1aa629e35__129[5] = 1;
+		return Entity{}, err
+	}
+	// Players are 1.8 tall with eyes at EyeHeight; aiming there reads as eye
+	// contact rather than staring at their shoes.
+	goCover_44b1aa629e35__129[4] = 1;return target, c.LookAt(target.X, target.Y+EyeHeight, target.Z)
+}

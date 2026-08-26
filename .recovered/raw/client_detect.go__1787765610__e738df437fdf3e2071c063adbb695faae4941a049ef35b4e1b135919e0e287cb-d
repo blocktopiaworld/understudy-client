@@ -1,0 +1,97 @@
+//line /home/smoca/work/blocktopia/blocktopia-client/client/detect.go:1:1
+package client
+
+import (
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"github.com/blocktopia/client/protocol"
+)
+
+// statusResponse is the part of a server-list ping this client cares about.
+type statusResponse struct {
+	Version struct {
+		Name     string `json:"name"`
+		Protocol int32  `json:"protocol"`
+	} `json:"version"`
+}
+
+// ServerStatus is what a server-list ping reports.
+type ServerStatus struct {
+	// VersionName is the server's own label, e.g. "Fabric 26.1.2". It is free
+	// text and servers rewrite it freely, so it is informational only.
+	VersionName string
+	// Protocol is the wire protocol number. This is the authoritative value —
+	// it is what the handshake must match.
+	Protocol int32
+}
+
+// PingServer performs a server-list ping and reports the version.
+//
+// The status handshake is deliberately version-agnostic: the protocol number
+// sent in it is ignored by the server for a status request, so this works
+// against any version without knowing it in advance. That is what makes
+// auto-detection possible at all.
+func PingServer(addr, host string, port uint16, timeout time.Duration) (ServerStatus, error) {goCover_44b1aa629e35__73[0] = 15 ; goCover_44b1aa629e35__73[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__73[2] = 73 ; goCover_44b1aa629e35__73[3] = 1;
+	conn, err := protocol.Dial(addr, timeout)
+	if err != nil {goCover_44b1aa629e35__73[11] = 1;
+		return ServerStatus{}, err
+	}
+	goCover_44b1aa629e35__73[4] = 1;defer conn.Close()
+
+	if err := conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {goCover_44b1aa629e35__73[12] = 1;
+		return ServerStatus{}, err
+	}
+
+	// Handshake with next state 1 (status) rather than 2 (login).
+	goCover_44b1aa629e35__73[5] = 1;handshake := protocol.NewWriter(0x00).
+		VarInt(0). // protocol version: ignored for status requests
+		String(host).
+		I16(int16(port)).
+		VarInt(1)
+	if err := conn.WritePacket(handshake.Bytes()); err != nil {goCover_44b1aa629e35__73[13] = 1;
+		return ServerStatus{}, err
+	}
+	// Status request: empty body.
+	goCover_44b1aa629e35__73[6] = 1;if err := conn.WritePacket(protocol.NewWriter(0x00).Bytes()); err != nil {goCover_44b1aa629e35__73[14] = 1;
+		return ServerStatus{}, err
+	}
+
+	goCover_44b1aa629e35__73[7] = 1;p, err := conn.ReadPacket()
+	if err != nil {goCover_44b1aa629e35__73[15] = 1;
+		return ServerStatus{}, fmt.Errorf("client: ping read: %w", err)
+	}
+	goCover_44b1aa629e35__73[8] = 1;r := p.Reader()
+	payload := r.String()
+	if err := r.Err(); err != nil {goCover_44b1aa629e35__73[16] = 1;
+		return ServerStatus{}, fmt.Errorf("client: ping decode: %w", err)
+	}
+
+	goCover_44b1aa629e35__73[9] = 1;var status statusResponse
+	if err := json.Unmarshal([]byte(payload), &status); err != nil {goCover_44b1aa629e35__73[17] = 1;
+		return ServerStatus{}, fmt.Errorf("client: ping json: %w", err)
+	}
+	goCover_44b1aa629e35__73[10] = 1;return ServerStatus{
+		VersionName: status.Version.Name,
+		Protocol:    status.Version.Protocol,
+	}, nil
+}
+
+// DetectVersion pings a server and resolves the matching protocol table.
+//
+// It matches on the protocol number, not the version name: names are free text
+// that proxies and forks rewrite ("Paper 1.21", "Velocity"), whereas the
+// protocol number is what actually has to agree on the wire.
+func DetectVersion(addr, host string, port uint16, timeout time.Duration) (*protocol.Version, error) {goCover_44b1aa629e35__74[0] = 5 ; goCover_44b1aa629e35__74[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__74[2] = 74 ; goCover_44b1aa629e35__74[3] = 1;
+	status, err := PingServer(addr, host, port, timeout)
+	if err != nil {goCover_44b1aa629e35__74[6] = 1;
+		return nil, fmt.Errorf("client: could not detect server version: %w", err)
+	}
+	goCover_44b1aa629e35__74[4] = 1;v, err := protocol.ByProtocol(status.Protocol)
+	if err != nil {goCover_44b1aa629e35__74[7] = 1;
+		return nil, fmt.Errorf("client: server reports %q (protocol %d): %w",
+			status.VersionName, status.Protocol, err)
+	}
+	goCover_44b1aa629e35__74[5] = 1;return v, nil
+}

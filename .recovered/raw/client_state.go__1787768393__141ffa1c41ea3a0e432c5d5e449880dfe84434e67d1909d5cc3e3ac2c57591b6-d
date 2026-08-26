@@ -1,0 +1,104 @@
+//line /home/smoca/work/blocktopia/blocktopia-client/client/state.go:1:1
+package client
+
+import "github.com/blocktopia/client/protocol"
+
+// The player state the server reports, behind one lock.
+//
+// These are all trivial guarded reads. They are gathered here rather than
+// scattered through the files that happen to write them so that the set of
+// things protected by c.mu is visible in one place — a field that grows a
+// second unsynchronised accessor somewhere else is exactly how a data race
+// gets introduced.
+
+// State returns the current protocol state.
+func (c *Client) State() protocol.State {goCover_44b1aa629e35__166[0] = 1 ; goCover_44b1aa629e35__166[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__166[2] = 166 ; goCover_44b1aa629e35__166[3] = 1;
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.state
+}
+
+func (c *Client) setState(s protocol.State) {goCover_44b1aa629e35__167[0] = 1 ; goCover_44b1aa629e35__167[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__167[2] = 167 ; goCover_44b1aa629e35__167[3] = 1;
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.state = s
+}
+
+// Position returns the last position the server told us about.
+func (c *Client) Position() Position {goCover_44b1aa629e35__168[0] = 1 ; goCover_44b1aa629e35__168[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__168[2] = 168 ; goCover_44b1aa629e35__168[3] = 1;
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.pos
+}
+
+// EntityID returns the player's entity ID, valid once joined.
+func (c *Client) EntityID() int32 {goCover_44b1aa629e35__169[0] = 1 ; goCover_44b1aa629e35__169[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__169[2] = 169 ; goCover_44b1aa629e35__169[3] = 1;
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.entityID
+}
+
+// Joined reports whether the play login packet has been seen.
+func (c *Client) Joined() bool {goCover_44b1aa629e35__170[0] = 1 ; goCover_44b1aa629e35__170[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__170[2] = 170 ; goCover_44b1aa629e35__170[3] = 1;
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.joined
+}
+
+// Health returns the last known health and food level.
+func (c *Client) Health() (health float32, food int32) {goCover_44b1aa629e35__171[0] = 1 ; goCover_44b1aa629e35__171[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__171[2] = 171 ; goCover_44b1aa629e35__171[3] = 1;
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.health, c.food
+}
+
+// Dead reports whether the bot is currently on the death screen. A dead bot
+// silently ignores actions, so anything driving it should check this rather
+// than trusting that a healthy connection means a usable player.
+func (c *Client) Dead() bool {goCover_44b1aa629e35__172[0] = 1 ; goCover_44b1aa629e35__172[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__172[2] = 172 ; goCover_44b1aa629e35__172[3] = 1;
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.dead
+}
+
+// Deaths returns how many times the bot has died this session.
+func (c *Client) Deaths() int {goCover_44b1aa629e35__173[0] = 1 ; goCover_44b1aa629e35__173[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__173[2] = 173 ; goCover_44b1aa629e35__173[3] = 1;
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.deaths
+}
+
+// Corrections returns how many position corrections the server has issued.
+// A rise in this value is how the client learns it has hit something.
+func (c *Client) Corrections() int {goCover_44b1aa629e35__174[0] = 1 ; goCover_44b1aa629e35__174[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__174[2] = 174 ; goCover_44b1aa629e35__174[3] = 1;
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.corrections
+}
+
+// OnGround reports the bot's last known support state.
+func (c *Client) OnGround() bool {goCover_44b1aa629e35__175[0] = 1 ; goCover_44b1aa629e35__175[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__175[2] = 175 ; goCover_44b1aa629e35__175[3] = 1;
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.onGround
+}
+
+// HeldSlot returns the selected hotbar slot.
+func (c *Client) HeldSlot() int {goCover_44b1aa629e35__176[0] = 1 ; goCover_44b1aa629e35__176[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__176[2] = 176 ; goCover_44b1aa629e35__176[3] = 1;
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.heldSlot
+}
+
+func (c *Client) setHeldSlotLocal(slot int) {goCover_44b1aa629e35__177[0] = 1 ; goCover_44b1aa629e35__177[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__177[2] = 177 ; goCover_44b1aa629e35__177[3] = 1;
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.heldSlot = slot
+}
+
+// Input returns the current movement-input bits.
+func (c *Client) Input() uint8 {goCover_44b1aa629e35__178[0] = 1 ; goCover_44b1aa629e35__178[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__178[2] = 178 ; goCover_44b1aa629e35__178[3] = 1;
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.input
+}

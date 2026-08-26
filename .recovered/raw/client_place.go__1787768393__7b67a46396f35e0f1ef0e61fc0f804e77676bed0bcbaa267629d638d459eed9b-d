@@ -1,0 +1,123 @@
+//line /home/smoca/work/blocktopia/blocktopia-client/client/place.go:1:1
+package client
+
+import (
+	"context"
+
+	"github.com/blocktopia/client/protocol"
+)
+
+// placeAttempts is how many times PlaceBlockVerified will send the packet.
+//
+// More than one because the FIRST block action of a session is sometimes
+// dropped by the server with no rejection — the same fault the missing
+// player_loaded packet used to cause for digs, which is fixed, and which this
+// still reproduces for places. Measured against a golem pattern: a bare
+// PlaceBlock succeeded on exactly 50% of fresh sessions, and 4/4 once any
+// throwaway placement had gone first. Digs never showed it because awaitBreak
+// keeps swinging and re-sends FinishDig, so it retries without meaning to.
+//
+// Two attempts is enough — it is the first action that is dropped, never a
+// later one.
+const placeAttempts = 2
+
+// PlaceBlock right-clicks a block face, which places the held item against it.
+//
+// The cursor position is the hit point within the face, in 0..1. Centre is a
+// safe default; it only matters for blocks whose placement depends on where
+// they were clicked, such as slabs and stairs.
+func (c *Client) PlaceBlock(ctx context.Context, x, y, z, face int32) error {goCover_44b1aa629e35__141[0] = 11 ; goCover_44b1aa629e35__141[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__141[2] = 141 ; goCover_44b1aa629e35__141[3] = 1;
+	if err := c.requireAlive("place"); err != nil {goCover_44b1aa629e35__141[9] = 1;
+		return err
+	}
+	goCover_44b1aa629e35__141[4] = 1;if err := c.awaitTeleportSettle(ctx); err != nil {goCover_44b1aa629e35__141[10] = 1;
+		return err
+	}
+	goCover_44b1aa629e35__141[5] = 1;if err := c.requireReach("place against", x, y, z); err != nil {goCover_44b1aa629e35__141[11] = 1;
+		return err
+	}
+	goCover_44b1aa629e35__141[6] = 1;if err := c.LookAtBlock(x, y, z); err != nil {goCover_44b1aa629e35__141[12] = 1;
+		return err
+	}
+	goCover_44b1aa629e35__141[7] = 1;w := protocol.NewWriter(c.v.Packets.SBPlayBlockPlace).
+		VarInt(protocol.MainHand).
+		BlockPos(x, y, z).
+		VarInt(face).
+		F32(BlockCentreOffset).F32(BlockCentreOffset).F32(BlockCentreOffset). // cursor within the face
+		Bool(false).                                                          // insideBlock
+		Bool(false).                                                          // worldBorderHit
+		VarInt(c.nextSequence())
+	if err := c.conn.WritePacket(w.Bytes()); err != nil {goCover_44b1aa629e35__141[13] = 1;
+		return err
+	}
+	goCover_44b1aa629e35__141[8] = 1;return c.Swing()
+}
+
+// PlaceBlockVerified places a block and confirms it actually appeared,
+// re-sending once if it didn't.
+//
+// Use this when the placement is the point. PlaceBlock is left unverified
+// because it doubles as "right-click this block" for opening UIs, where
+// nothing is expected to change.
+func (c *Client) PlaceBlockVerified(ctx context.Context, x, y, z, face int32) error {goCover_44b1aa629e35__142[0] = 8 ; goCover_44b1aa629e35__142[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__142[2] = 142 ; goCover_44b1aa629e35__142[3] = 1;
+	target := BlockOffsetByFace(x, y, z, face)
+	var err error
+	for range placeAttempts {goCover_44b1aa629e35__142[5] = 1;
+		if err = c.PlaceBlock(ctx, x, y, z, face); err != nil {goCover_44b1aa629e35__142[8] = 1;
+			return err
+		}
+		goCover_44b1aa629e35__142[6] = 1;if err = c.confirmBlockBecame(ctx, target[0], target[1], target[2], true); err == nil {goCover_44b1aa629e35__142[9] = 1;
+			return nil
+		}
+		goCover_44b1aa629e35__142[7] = 1;if ctx.Err() != nil {goCover_44b1aa629e35__142[10] = 1;
+			return ctx.Err()
+		}
+	}
+	goCover_44b1aa629e35__142[4] = 1;return err
+}
+
+// BlockOffsetByFace returns the coordinate a block placed against a face
+// occupies — the neighbour, not the clicked block itself.
+func BlockOffsetByFace(x, y, z, face int32) [3]int32 {goCover_44b1aa629e35__143[0] = 7 ; goCover_44b1aa629e35__143[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__143[2] = 143 ; goCover_44b1aa629e35__143[3] = 1;
+	switch face {
+	case protocol.FaceBottom:goCover_44b1aa629e35__143[4] = 1;
+		return [3]int32{x, y - 1, z}
+	case protocol.FaceTop:goCover_44b1aa629e35__143[5] = 1;
+		return [3]int32{x, y + 1, z}
+	case protocol.FaceNorth:goCover_44b1aa629e35__143[6] = 1;
+		return [3]int32{x, y, z - 1}
+	case protocol.FaceSouth:goCover_44b1aa629e35__143[7] = 1;
+		return [3]int32{x, y, z + 1}
+	case protocol.FaceWest:goCover_44b1aa629e35__143[8] = 1;
+		return [3]int32{x - 1, y, z}
+	default:goCover_44b1aa629e35__143[9] = 1;
+		return [3]int32{x + 1, y, z}
+	}
+}
+
+// UseItem right-clicks with the held item without targeting a block — eating,
+// drinking, throwing, and using a bucket in mid-air.
+func (c *Client) UseItem(ctx context.Context) error {goCover_44b1aa629e35__144[0] = 5 ; goCover_44b1aa629e35__144[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__144[2] = 144 ; goCover_44b1aa629e35__144[3] = 1;
+	if err := c.requireAlive("use item"); err != nil {goCover_44b1aa629e35__144[6] = 1;
+		return err
+	}
+	goCover_44b1aa629e35__144[4] = 1;if err := c.awaitTeleportSettle(ctx); err != nil {goCover_44b1aa629e35__144[7] = 1;
+		return err
+	}
+	goCover_44b1aa629e35__144[5] = 1;pos := c.Position()
+	w := protocol.NewWriter(c.v.Packets.SBPlayUseItem).
+		VarInt(protocol.MainHand).
+		VarInt(c.nextSequence()).
+		F32(pos.Yaw).F32(pos.Pitch)
+	return c.conn.WritePacket(w.Bytes())
+}
+
+// UseOnBlock right-clicks a block without placing anything — opening a
+// crafting table, anvil, furnace or chest, or using a bed.
+//
+// It is the same packet as PlaceBlock; what differs is intent and what is in
+// hand. Several statistics (interact_with_anvil and friends) count the GUI
+// opening rather than any item being used, so an empty hand is usually right.
+func (c *Client) UseOnBlock(ctx context.Context, x, y, z, face int32) error {goCover_44b1aa629e35__145[0] = 1 ; goCover_44b1aa629e35__145[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__145[2] = 145 ; goCover_44b1aa629e35__145[3] = 1;
+	return c.PlaceBlock(ctx, x, y, z, face)
+}

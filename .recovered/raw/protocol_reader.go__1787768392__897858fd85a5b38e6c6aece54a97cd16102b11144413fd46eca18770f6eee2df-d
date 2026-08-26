@@ -1,0 +1,168 @@
+//line /home/smoca/work/blocktopia/blocktopia-client/protocol/reader.go:1:1
+package protocol
+
+import (
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"math"
+)
+
+// MaxStringLen bounds a decoded string.
+//
+// The protocol's own limit is 32767 characters, which is at most four bytes
+// each. Anything longer is a desynced stream rather than a real field, and
+// without a cap the length prefix — which is whatever bytes happened to land
+// at that offset — decides how much memory this client allocates.
+const MaxStringLen = 32767 * 4
+
+// zeroPad backs every failed read. It is sized for the widest fixed-width
+// field (a 16-byte UUID) so the accessors can index it unconditionally.
+//
+// Sharing one buffer is the point: n comes off the wire, so allocating n bytes
+// to satisfy a read that has already failed turns a single corrupt length
+// prefix into an out-of-memory kill.
+var zeroPad [16]byte
+
+// Reader decodes a packet payload. Every read is bounds-checked and the first
+// failure is sticky: once Err is set, later reads return zero values instead
+// of panicking. That lets a decoder read a whole packet and check the error
+// once at the end rather than after every field.
+//
+// A Reader is not safe for concurrent use.
+type Reader struct {
+	buf []byte
+	pos int
+	err error
+}
+
+// NewReader returns a Reader over buf. The buffer is not copied, so it must
+// not be modified while the Reader is in use.
+func NewReader(buf []byte) *Reader {goCover_057b68bc3a18__23[0] = 1 ; goCover_057b68bc3a18__23[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__23[2] = 23 ; goCover_057b68bc3a18__23[3] = 1; return &Reader{buf: buf} }
+
+// Err returns the first error encountered, if any.
+func (r *Reader) Err() error {goCover_057b68bc3a18__24[0] = 1 ; goCover_057b68bc3a18__24[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__24[2] = 24 ; goCover_057b68bc3a18__24[3] = 1; return r.err }
+
+// Remaining returns the undecoded tail of the payload, or nil once a read has
+// failed. It aliases the underlying buffer.
+func (r *Reader) Remaining() []byte {goCover_057b68bc3a18__25[0] = 3 ; goCover_057b68bc3a18__25[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__25[2] = 25 ; goCover_057b68bc3a18__25[3] = 1;
+	if r.err != nil || r.pos > len(r.buf) {goCover_057b68bc3a18__25[5] = 1;
+		return nil
+	}
+	goCover_057b68bc3a18__25[4] = 1;return r.buf[r.pos:]
+}
+
+func (r *Reader) fail(err error) {goCover_057b68bc3a18__26[0] = 2 ; goCover_057b68bc3a18__26[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__26[2] = 26 ; goCover_057b68bc3a18__26[3] = 1;
+	if r.err == nil {goCover_057b68bc3a18__26[4] = 1;
+		r.err = err
+	}
+}
+
+// take returns the next n bytes, advancing the cursor.
+//
+// On any failure it returns a slice of shared zeroes rather than a fresh
+// allocation — see zeroPad. The result may therefore be shorter than n, which
+// is safe because every caller either indexes within the fixed-width prefix or
+// discards the value once Err is set.
+func (r *Reader) take(n int) []byte {goCover_057b68bc3a18__27[0] = 8 ; goCover_057b68bc3a18__27[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__27[2] = 27 ; goCover_057b68bc3a18__27[3] = 1;
+	if r.err == nil {goCover_057b68bc3a18__27[6] = 1;
+		switch {
+		case n < 0:goCover_057b68bc3a18__27[7] = 1;
+			r.fail(fmt.Errorf("protocol: negative read length %d", n))
+		case n > len(r.buf)-r.pos:goCover_057b68bc3a18__27[8] = 1;
+			r.fail(fmt.Errorf("protocol: short read: want %d bytes at offset %d, have %d",
+				n, r.pos, len(r.buf)-r.pos))
+		default:goCover_057b68bc3a18__27[9] = 1;
+			b := r.buf[r.pos : r.pos+n]
+			r.pos += n
+			return b
+		}
+	}
+	goCover_057b68bc3a18__27[4] = 1;if n > len(zeroPad) || n < 0 {goCover_057b68bc3a18__27[10] = 1;
+		n = len(zeroPad)
+	}
+	goCover_057b68bc3a18__27[5] = 1;return zeroPad[:n]
+}
+
+// ReadByte satisfies io.ByteReader so the VarInt helpers can read from here.
+func (r *Reader) ReadByte() (byte, error) {goCover_057b68bc3a18__28[0] = 5 ; goCover_057b68bc3a18__28[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__28[2] = 28 ; goCover_057b68bc3a18__28[3] = 1;
+	if r.err != nil {goCover_057b68bc3a18__28[6] = 1;
+		return 0, r.err
+	}
+	goCover_057b68bc3a18__28[4] = 1;if r.pos >= len(r.buf) {goCover_057b68bc3a18__28[7] = 1;
+		r.fail(errors.New("protocol: short read: no bytes remaining"))
+		return 0, r.err
+	}
+	goCover_057b68bc3a18__28[5] = 1;b := r.buf[r.pos]
+	r.pos++
+	return b, nil
+}
+
+// VarInt reads a variable-length 32-bit integer.
+func (r *Reader) VarInt() int32 {goCover_057b68bc3a18__29[0] = 3 ; goCover_057b68bc3a18__29[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__29[2] = 29 ; goCover_057b68bc3a18__29[3] = 1;
+	v, err := ReadVarInt(r)
+	if err != nil {goCover_057b68bc3a18__29[5] = 1;
+		r.fail(err)
+		return 0
+	}
+	goCover_057b68bc3a18__29[4] = 1;return v
+}
+
+// VarLong reads a variable-length 64-bit integer.
+func (r *Reader) VarLong() int64 {goCover_057b68bc3a18__30[0] = 3 ; goCover_057b68bc3a18__30[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__30[2] = 30 ; goCover_057b68bc3a18__30[3] = 1;
+	v, err := ReadVarLong(r)
+	if err != nil {goCover_057b68bc3a18__30[5] = 1;
+		r.fail(err)
+		return 0
+	}
+	goCover_057b68bc3a18__30[4] = 1;return v
+}
+
+// Bool reads a single byte as a boolean.
+func (r *Reader) Bool() bool {goCover_057b68bc3a18__31[0] = 1 ; goCover_057b68bc3a18__31[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__31[2] = 31 ; goCover_057b68bc3a18__31[3] = 1; return r.take(1)[0] != 0 }
+
+// U8 reads an unsigned byte.
+func (r *Reader) U8() uint8 {goCover_057b68bc3a18__32[0] = 1 ; goCover_057b68bc3a18__32[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__32[2] = 32 ; goCover_057b68bc3a18__32[3] = 1; return r.take(1)[0] }
+
+// I8 reads a signed byte.
+func (r *Reader) I8() int8 {goCover_057b68bc3a18__33[0] = 1 ; goCover_057b68bc3a18__33[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__33[2] = 33 ; goCover_057b68bc3a18__33[3] = 1; return int8(r.take(1)[0]) }
+
+// I16 reads a big-endian signed 16-bit integer.
+func (r *Reader) I16() int16 {goCover_057b68bc3a18__34[0] = 1 ; goCover_057b68bc3a18__34[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__34[2] = 34 ; goCover_057b68bc3a18__34[3] = 1; return int16(binary.BigEndian.Uint16(r.take(2))) }
+
+// I32 reads a big-endian signed 32-bit integer.
+func (r *Reader) I32() int32 {goCover_057b68bc3a18__35[0] = 1 ; goCover_057b68bc3a18__35[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__35[2] = 35 ; goCover_057b68bc3a18__35[3] = 1; return int32(binary.BigEndian.Uint32(r.take(4))) }
+
+// I64 reads a big-endian signed 64-bit integer.
+func (r *Reader) I64() int64 {goCover_057b68bc3a18__36[0] = 1 ; goCover_057b68bc3a18__36[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__36[2] = 36 ; goCover_057b68bc3a18__36[3] = 1; return int64(binary.BigEndian.Uint64(r.take(8))) }
+
+// F32 reads a big-endian IEEE-754 single.
+func (r *Reader) F32() float32 {goCover_057b68bc3a18__37[0] = 1 ; goCover_057b68bc3a18__37[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__37[2] = 37 ; goCover_057b68bc3a18__37[3] = 1; return math.Float32frombits(binary.BigEndian.Uint32(r.take(4))) }
+
+// F64 reads a big-endian IEEE-754 double.
+func (r *Reader) F64() float64 {goCover_057b68bc3a18__38[0] = 1 ; goCover_057b68bc3a18__38[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__38[2] = 38 ; goCover_057b68bc3a18__38[3] = 1; return math.Float64frombits(binary.BigEndian.Uint64(r.take(8))) }
+
+// String reads a length-prefixed UTF-8 string, rejecting implausible lengths
+// rather than allocating whatever the prefix claims. See MaxStringLen.
+func (r *Reader) String() string {goCover_057b68bc3a18__39[0] = 7 ; goCover_057b68bc3a18__39[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__39[2] = 39 ; goCover_057b68bc3a18__39[3] = 1;
+	n := r.VarInt()
+	if r.err != nil {goCover_057b68bc3a18__39[7] = 1;
+		return ""
+	}
+	goCover_057b68bc3a18__39[4] = 1;if n < 0 || n > MaxStringLen {goCover_057b68bc3a18__39[8] = 1;
+		r.fail(fmt.Errorf("protocol: string length %d out of range (max %d)", n, MaxStringLen))
+		return ""
+	}
+	goCover_057b68bc3a18__39[5] = 1;b := r.take(int(n))
+	if r.err != nil {goCover_057b68bc3a18__39[9] = 1;
+		return ""
+	}
+	goCover_057b68bc3a18__39[6] = 1;return string(b)
+}
+
+// UUID reads a 128-bit UUID in wire order.
+func (r *Reader) UUID() UUID {goCover_057b68bc3a18__40[0] = 1 ; goCover_057b68bc3a18__40[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__40[2] = 40 ; goCover_057b68bc3a18__40[3] = 1;
+	var u UUID
+	copy(u[:], r.take(16))
+	return u
+}

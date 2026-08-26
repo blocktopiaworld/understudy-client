@@ -1,0 +1,121 @@
+//line /home/smoca/work/blocktopia/blocktopia-client/cmd/blwbot/main.go:1:1
+// Command blwbot connects a single bot to a Minecraft server and holds the
+// connection open. It is the smoke test for the connection layer: if this
+// prints "joined the game" and the server log agrees, the handshake, login,
+// configuration and play plumbing all work.
+package main; import _ "runtime/coverage"
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"log/slog"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/blocktopia/client/client"
+	"github.com/blocktopia/client/protocol"
+)
+
+func main() {goCover_0c8c214784e2__35[0] = 24 ; goCover_0c8c214784e2__35[1] = goCover_0c8c214784e2_P ; goCover_0c8c214784e2__35[2] = 35 ; goCover_0c8c214784e2__35[3] = 1;
+	addr := flag.String("addr", "127.0.0.1:25565", "server host:port")
+	username := flag.String("username", "BlwBot", "offline-mode player name")
+	hold := flag.Duration("hold", 15*time.Second, "how long to stay connected after joining (0 = until interrupted)")
+	version := flag.String("version", "", "Minecraft version to speak (default: auto-detect by pinging the server)")
+	listVersions := flag.Bool("versions", false, "list supported versions and exit")
+	control := flag.String("control", "", "serve the remote-control HTTP API on this port or host:port (e.g. 8080)")
+	noRespawn := flag.Bool("no-respawn", false, "stay dead instead of respawning (for observing death handling)")
+	trace := flag.Bool("trace", false, "log every clientbound packet id")
+	debug := flag.Bool("debug", false, "enable debug logging")
+	flag.Parse()
+
+	level := slog.LevelInfo
+	if *debug {goCover_0c8c214784e2__35[14] = 1;
+		level = slog.LevelDebug
+	}
+	goCover_0c8c214784e2__35[4] = 1;log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
+
+	if *listVersions {goCover_0c8c214784e2__35[15] = 1;
+		fmt.Println(strings.Join(protocol.Names(), "\n"))
+		return
+	}
+
+	goCover_0c8c214784e2__35[5] = 1;opts := client.Options{
+		Addr:               *addr,
+		Version:            *version,
+		Username:           *username,
+		DisableAutoRespawn: *noRespawn,
+		Logger:             log,
+	}
+	if *trace {goCover_0c8c214784e2__35[16] = 1;
+		opts.OnPacket = func(state protocol.State, p protocol.Packet) {goCover_0c8c214784e2__35[17] = 1;
+			log.Debug("recv", "state", state.String(), "id", fmt.Sprintf("0x%02x", p.ID), "bytes", len(p.Data))
+		}
+	}
+
+	goCover_0c8c214784e2__35[6] = 1;c, err := client.New(opts)
+	if err != nil {goCover_0c8c214784e2__35[18] = 1;
+		log.Error("configuration error", "err", err)
+		os.Exit(1)
+	}
+
+	// Ctrl-C and SIGTERM should disconnect cleanly rather than leave the
+	// server holding a half-open player slot.
+	goCover_0c8c214784e2__35[7] = 1;ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	started := time.Now()
+	if err := c.Connect(ctx); err != nil {goCover_0c8c214784e2__35[19] = 1;
+		log.Error("connect failed", "err", err)
+		os.Exit(1)
+	}
+	goCover_0c8c214784e2__35[8] = 1;defer c.Close()
+
+	runCtx := ctx
+	if *hold > 0 {goCover_0c8c214784e2__35[20] = 1;
+		var cancel context.CancelFunc
+		runCtx, cancel = context.WithTimeout(ctx, *hold)
+		defer cancel()
+	}
+
+	goCover_0c8c214784e2__35[9] = 1;if *control != "" {goCover_0c8c214784e2__35[21] = 1;
+		// The control API writes packets while Run reads them. That is safe:
+		// the connection serialises writes internally.
+		go func() {goCover_0c8c214784e2__35[22] = 1;
+			if err := newControlServer(c, log).serve(runCtx, parsePort(*control)); err != nil {goCover_0c8c214784e2__35[23] = 1;
+				log.Error("control api stopped", "err", err)
+			}
+		}()
+	}
+
+	goCover_0c8c214784e2__35[10] = 1;err = c.Run(runCtx)
+
+	// A cancelled context is the success path when --hold expires: the bot
+	// stayed connected for the whole window without being kicked.
+	if err != nil && ctx.Err() == nil && runCtx.Err() == nil {goCover_0c8c214784e2__35[24] = 1;
+		log.Error("disconnected", "err", err)
+		os.Exit(1)
+	}
+	goCover_0c8c214784e2__35[11] = 1;if err != nil {goCover_0c8c214784e2__35[25] = 1;
+		// Expected on a clean shutdown, but the reason still has to be
+		// visible: "stopped because the hold expired" and "stopped because the
+		// server hung up a moment earlier" look identical without it.
+		log.Info("run ended", "err", err, "elapsed", time.Since(started).Round(time.Millisecond))
+	}
+
+	goCover_0c8c214784e2__35[12] = 1;if !c.Joined() {goCover_0c8c214784e2__35[26] = 1;
+		log.Error("never received the play login packet")
+		os.Exit(1)
+	}
+	goCover_0c8c214784e2__35[13] = 1;pos := c.Position()
+	health, food := c.Health()
+	log.Info("done",
+		"uuid", c.UUID.String(),
+		"entity_id", c.EntityID(),
+		"x", pos.X, "y", pos.Y, "z", pos.Z,
+		"health", health, "food", food,
+		"deaths", c.Deaths(), "dead", c.Dead())
+}

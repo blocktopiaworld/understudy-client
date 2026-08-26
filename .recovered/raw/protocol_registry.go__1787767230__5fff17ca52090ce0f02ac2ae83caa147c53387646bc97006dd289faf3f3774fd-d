@@ -1,0 +1,77 @@
+//line /home/smoca/work/blocktopia/blocktopia-client/protocol/registry.go:1:1
+package protocol
+
+import (
+	"fmt"
+	"slices"
+	"sync"
+)
+
+// The version registry. Generated tables call Register from their init, so
+// importing this package is enough to make every supported version available.
+//
+// It is a package-level registry rather than an injected one because the set
+// of protocol versions is a property of the build, not of any one client: two
+// Clients speaking different versions still agree on what "26.1" means.
+var (
+	registryMu sync.RWMutex
+	byName     = map[string]*Version{}
+	byProtocol = map[int32]*Version{}
+)
+
+// Register adds a version to the registry. It panics on a duplicate name or
+// protocol number, which can only be a build-time mistake in the generated
+// tables — two versions claiming one protocol number would otherwise make
+// auto-detection silently pick whichever registered last.
+func Register(v *Version) {goCover_057b68bc3a18__40[0] = 5 ; goCover_057b68bc3a18__40[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__40[2] = 40 ; goCover_057b68bc3a18__40[3] = 1;
+	registryMu.Lock()
+	defer registryMu.Unlock()
+	if prev, ok := byName[v.Name]; ok {goCover_057b68bc3a18__40[6] = 1;
+		panic(fmt.Sprintf("protocol: version %q registered twice (protocols %d and %d)",
+			v.Name, prev.Protocol, v.Protocol))
+	}
+	goCover_057b68bc3a18__40[4] = 1;if prev, ok := byProtocol[v.Protocol]; ok {goCover_057b68bc3a18__40[7] = 1;
+		panic(fmt.Sprintf("protocol: protocol %d registered by both %q and %q",
+			v.Protocol, prev.Name, v.Name))
+	}
+	goCover_057b68bc3a18__40[5] = 1;byName[v.Name] = v
+	byProtocol[v.Protocol] = v
+}
+
+// ByName looks up a version by its Minecraft version string, e.g. "26.1".
+func ByName(name string) (*Version, error) {goCover_057b68bc3a18__41[0] = 3 ; goCover_057b68bc3a18__41[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__41[2] = 41 ; goCover_057b68bc3a18__41[3] = 1;
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+	if v, ok := byName[name]; ok {goCover_057b68bc3a18__41[5] = 1;
+		return v, nil
+	}
+	goCover_057b68bc3a18__41[4] = 1;return nil, fmt.Errorf("protocol: unsupported version %q (have %v)", name, namesLocked())
+}
+
+// ByProtocol looks up a version by its wire protocol number. This is what a
+// server-list ping reports, so it is the entry point for auto-detection.
+func ByProtocol(p int32) (*Version, error) {goCover_057b68bc3a18__42[0] = 3 ; goCover_057b68bc3a18__42[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__42[2] = 42 ; goCover_057b68bc3a18__42[3] = 1;
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+	if v, ok := byProtocol[p]; ok {goCover_057b68bc3a18__42[5] = 1;
+		return v, nil
+	}
+	goCover_057b68bc3a18__42[4] = 1;return nil, fmt.Errorf("protocol: unsupported protocol %d (have %v)", p, namesLocked())
+}
+
+// Names lists the registered version names, sorted.
+func Names() []string {goCover_057b68bc3a18__43[0] = 1 ; goCover_057b68bc3a18__43[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__43[2] = 43 ; goCover_057b68bc3a18__43[3] = 1;
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+	return namesLocked()
+}
+
+// namesLocked builds the sorted name list. The caller holds registryMu.
+func namesLocked() []string {goCover_057b68bc3a18__44[0] = 3 ; goCover_057b68bc3a18__44[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__44[2] = 44 ; goCover_057b68bc3a18__44[3] = 1;
+	out := make([]string, 0, len(byName))
+	for name := range byName {goCover_057b68bc3a18__44[5] = 1;
+		out = append(out, name)
+	}
+	goCover_057b68bc3a18__44[4] = 1;slices.Sort(out)
+	return out
+}

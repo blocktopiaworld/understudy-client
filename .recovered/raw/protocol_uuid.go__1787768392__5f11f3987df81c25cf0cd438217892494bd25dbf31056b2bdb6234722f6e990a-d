@@ -1,0 +1,49 @@
+//line /home/smoca/work/blocktopia/blocktopia-client/protocol/uuid.go:1:1
+package protocol
+
+import (
+	"crypto/md5" //nolint:gosec // G501: RFC-4122 v3 mandates MD5; see OfflineUUID
+	"encoding/hex"
+	"strings"
+)
+
+// UUID is a raw 128-bit Minecraft UUID in wire order.
+type UUID [16]byte
+
+// String renders the canonical 8-4-4-4-12 hyphenated form.
+func (u UUID) String() string {goCover_057b68bc3a18__46[0] = 1 ; goCover_057b68bc3a18__46[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__46[2] = 46 ; goCover_057b68bc3a18__46[3] = 1;
+	h := hex.EncodeToString(u[:])
+	var b strings.Builder
+	b.Grow(36)
+	b.WriteString(h[0:8])
+	b.WriteByte('-')
+	b.WriteString(h[8:12])
+	b.WriteByte('-')
+	b.WriteString(h[12:16])
+	b.WriteByte('-')
+	b.WriteString(h[16:20])
+	b.WriteByte('-')
+	b.WriteString(h[20:32])
+	return b.String()
+}
+
+// OfflineUUID derives the UUID an offline-mode server assigns to a username.
+//
+// Vanilla computes `UUID.nameUUIDFromBytes(("OfflinePlayer:"+name).getBytes(UTF_8))`,
+// a plain RFC-4122 v3 (MD5) UUID. The bot has to derive the identical value
+// because every Blocktopia grant and every `player_mc_stats` row is keyed by
+// UUID — get this wrong and the bot plays correctly while the assertions look
+// at a player who does not exist.
+//
+// This must stay byte-for-byte identical to the harness's TypeScript
+// `offlineUuid()`; the two address the same rows.
+func OfflineUUID(name string) UUID {goCover_057b68bc3a18__47[0] = 1 ; goCover_057b68bc3a18__47[1] = goCover_057b68bc3a18_P ; goCover_057b68bc3a18__47[2] = 47 ; goCover_057b68bc3a18__47[3] = 1;
+	// MD5 is not a security choice here and cannot be substituted: an RFC-4122
+	// v3 UUID *is* an MD5 digest, and the server derives the same value the
+	// same way. Any stronger hash would produce a different UUID and address a
+	// player who does not exist.
+	sum := md5.Sum([]byte("OfflinePlayer:" + name)) //nolint:gosec // G401: see above
+	sum[6] = (sum[6] & 0x0f) | 0x30                 // version 3
+	sum[8] = (sum[8] & 0x3f) | 0x80                 // RFC-4122 variant
+	return UUID(sum)
+}

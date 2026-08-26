@@ -1,0 +1,246 @@
+//line /home/smoca/work/blocktopia/blocktopia-client/client/verbs.go:1:1
+package client
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/blocktopia/client/protocol"
+)
+
+// SetInput sets the player's movement-input bits (sneak, sprint, jump…).
+//
+// These live in player_input as of 26.1. Older clients put sneaking in
+// entity_action, which in 26.1 no longer has the action at all — so code
+// written against the old shape sneaks silently never.
+func (c *Client) SetInput(flags uint8) error {goCover_44b1aa629e35__125[0] = 5 ; goCover_44b1aa629e35__125[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__125[2] = 125 ; goCover_44b1aa629e35__125[3] = 1;
+	if err := c.requireAlive("set input"); err != nil {goCover_44b1aa629e35__125[6] = 1;
+		return err
+	}
+	goCover_44b1aa629e35__125[4] = 1;if c.v.Packets.SBPlayPlayerInput == protocol.Absent {goCover_44b1aa629e35__125[7] = 1;
+		return fmt.Errorf("client: %s has no player_input packet", c.v.Name)
+	}
+	goCover_44b1aa629e35__125[5] = 1;c.mu.Lock()
+	c.input = flags
+	c.mu.Unlock()
+	return c.conn.WritePacket(protocol.NewWriter(c.v.Packets.SBPlayPlayerInput).U8(flags).Bytes())
+}
+
+// Input returns the current movement-input bits.
+func (c *Client) Input() uint8 {goCover_44b1aa629e35__126[0] = 1 ; goCover_44b1aa629e35__126[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__126[2] = 126 ; goCover_44b1aa629e35__126[3] = 1;
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.input
+}
+
+// SetSneaking starts or stops sneaking, leaving the other input bits alone.
+func (c *Client) SetSneaking(on bool) error {goCover_44b1aa629e35__127[0] = 4 ; goCover_44b1aa629e35__127[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__127[2] = 127 ; goCover_44b1aa629e35__127[3] = 1;
+	flags := c.Input()
+	if on {goCover_44b1aa629e35__127[5] = 1;
+		flags |= protocol.InputSneak
+	} else{ goCover_44b1aa629e35__127[6] = 1;{
+		flags &^= protocol.InputSneak
+	}}
+	goCover_44b1aa629e35__127[4] = 1;return c.SetInput(flags)
+}
+
+// SetSprinting starts or stops sprinting.
+func (c *Client) SetSprinting(on bool) error {goCover_44b1aa629e35__128[0] = 4 ; goCover_44b1aa629e35__128[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__128[2] = 128 ; goCover_44b1aa629e35__128[3] = 1;
+	flags := c.Input()
+	if on {goCover_44b1aa629e35__128[5] = 1;
+		flags |= protocol.InputSprint
+	} else{ goCover_44b1aa629e35__128[6] = 1;{
+		flags &^= protocol.InputSprint
+	}}
+	goCover_44b1aa629e35__128[4] = 1;return c.SetInput(flags)
+}
+
+// Sneak holds sneak for a duration, then releases it. Useful for the
+// sneak_time statistic, which accrues only while actually sneaking.
+func (c *Client) Sneak(ctx context.Context, d time.Duration) error {goCover_44b1aa629e35__129[0] = 6 ; goCover_44b1aa629e35__129[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__129[2] = 129 ; goCover_44b1aa629e35__129[3] = 1;
+	if err := c.SetSneaking(true); err != nil {goCover_44b1aa629e35__129[6] = 1;
+		return err
+	}
+	goCover_44b1aa629e35__129[4] = 1;select {
+	case <-ctx.Done():goCover_44b1aa629e35__129[7] = 1;
+	case <-time.After(d):goCover_44b1aa629e35__129[8] = 1;
+	}
+	goCover_44b1aa629e35__129[5] = 1;return c.SetSneaking(false)
+}
+
+// DropHeld drops the held item. With all true it throws the whole stack,
+// otherwise a single item.
+//
+// Dropping rides on the block_dig packet with a status that means "drop"
+// rather than "break" — the position and face are ignored, which is why they
+// are sent as zeroes.
+func (c *Client) DropHeld(all bool) error {goCover_44b1aa629e35__130[0] = 5 ; goCover_44b1aa629e35__130[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__130[2] = 130 ; goCover_44b1aa629e35__130[3] = 1;
+	if err := c.requireAlive("drop"); err != nil {goCover_44b1aa629e35__130[6] = 1;
+		return err
+	}
+	goCover_44b1aa629e35__130[4] = 1;status := protocol.DigDropItem
+	if all {goCover_44b1aa629e35__130[7] = 1;
+		status = protocol.DigDropStack
+	}
+	goCover_44b1aa629e35__130[5] = 1;w := protocol.NewWriter(c.v.Packets.SBPlayBlockDig).
+		VarInt(status).
+		BlockPos(0, 0, 0).
+		I8(0).
+		VarInt(c.nextSequence())
+	return c.conn.WritePacket(w.Bytes())
+}
+
+// EquipArmour moves a wearable item onto the armour slot it belongs in.
+//
+// It leans on the server's own shift-click behaviour: quick-moving a helmet
+// from the inventory puts it on the head, because that is where the server
+// decides such an item goes. Doing it by hand would mean replicating those
+// placement rules client-side.
+func (c *Client) EquipArmour(name string) (ItemStack, error) {goCover_44b1aa629e35__131[0] = 7 ; goCover_44b1aa629e35__131[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__131[2] = 131 ; goCover_44b1aa629e35__131[3] = 1;
+	if err := c.requireAlive("equip"); err != nil {goCover_44b1aa629e35__131[7] = 1;
+		return ItemStack{}, err
+	}
+	goCover_44b1aa629e35__131[4] = 1;item, ok := c.FindItem(name)
+	if !ok {goCover_44b1aa629e35__131[8] = 1;
+		return ItemStack{}, fmt.Errorf("client: no %q in inventory", name)
+	}
+	goCover_44b1aa629e35__131[5] = 1;if item.Slot >= SlotArmorHead && item.Slot < SlotMainStart {goCover_44b1aa629e35__131[9] = 1;
+		return item, nil // already worn
+	}
+	goCover_44b1aa629e35__131[6] = 1;return item, c.clickSlot(item.Slot, 0, ClickModeQuickMove)
+}
+
+// InteractEntity right-clicks an entity — taming, breeding, trading, leashing,
+// shearing.
+//
+// In 26.1 this is interact only: attacking moved to its own packet. The hit
+// location is sent as a zero vector, which the variable-length encoding
+// expresses in a single zero byte, since interacting with an entity does not
+// depend on where on its body it was clicked.
+func (c *Client) InteractEntity(entityID int32) error {goCover_44b1aa629e35__132[0] = 7 ; goCover_44b1aa629e35__132[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__132[2] = 132 ; goCover_44b1aa629e35__132[3] = 1;
+	if err := c.requireAlive("interact"); err != nil {goCover_44b1aa629e35__132[7] = 1;
+		return err
+	}
+	goCover_44b1aa629e35__132[4] = 1;if c.v.Packets.SBPlayUseEntity == protocol.Absent {goCover_44b1aa629e35__132[8] = 1;
+		return fmt.Errorf("client: %s has no use_entity packet", c.v.Name)
+	}
+	goCover_44b1aa629e35__132[5] = 1;w := protocol.NewWriter(c.v.Packets.SBPlayUseEntity).
+		VarInt(entityID).
+		VarInt(protocol.MainHand).
+		U8(0). // lpVec3 zero vector: a leading zero byte encodes {0,0,0}
+		Bool(false)
+	if err := c.conn.WritePacket(w.Bytes()); err != nil {goCover_44b1aa629e35__132[9] = 1;
+		return err
+	}
+	goCover_44b1aa629e35__132[6] = 1;return c.Swing()
+}
+
+// InteractNearest right-clicks the closest entity of a type.
+func (c *Client) InteractNearest(typeName string) (Entity, error) {goCover_44b1aa629e35__133[0] = 7 ; goCover_44b1aa629e35__133[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__133[2] = 133 ; goCover_44b1aa629e35__133[3] = 1;
+	target, err := c.NearestEntity(typeName)
+	if err != nil {goCover_44b1aa629e35__133[7] = 1;
+		return Entity{}, err
+	}
+	goCover_44b1aa629e35__133[4] = 1;if d := c.DistanceTo(target); d > AttackReach {goCover_44b1aa629e35__133[8] = 1;
+		return target, fmt.Errorf(
+			"client: nearest %s (entity %d) is %.2f blocks away, beyond the %.1f block reach",
+			target.TypeName, target.ID, d, AttackReach)
+	}
+	goCover_44b1aa629e35__133[5] = 1;if err := c.LookAt(target.X, target.Y+1.0, target.Z); err != nil {goCover_44b1aa629e35__133[9] = 1;
+		return target, err
+	}
+	goCover_44b1aa629e35__133[6] = 1;return target, c.InteractEntity(target.ID)
+}
+
+// ConsumeDuration is how long a normal eat or drink takes: 32 ticks.
+const ConsumeDuration = 32 * TickRate
+
+// Consume eats or drinks the held item.
+//
+// This is a *held* action, not an instant one. Sending use_item alone starts
+// the animation and nothing else; the server only applies the effect once the
+// item has been held for its full use time and the use is then released. A
+// client that skips the wait appears to eat and never actually does.
+func (c *Client) Consume(ctx context.Context) error {goCover_44b1aa629e35__134[0] = 17 ; goCover_44b1aa629e35__134[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__134[2] = 134 ; goCover_44b1aa629e35__134[3] = 1;
+	if err := c.requireAlive("consume"); err != nil {goCover_44b1aa629e35__134[11] = 1;
+		return err
+	}
+	// Snapshot the stack first. The server silently refuses to eat ordinary
+	// food at full hunger — no error, no feedback — so without a before/after
+	// comparison a refused eat is indistinguishable from a successful one, and
+	// the caller happily moves on believing it fed the bot.
+	goCover_44b1aa629e35__134[4] = 1;before, hadItem := c.HeldItem()
+
+	if err := c.UseItem(); err != nil {goCover_44b1aa629e35__134[12] = 1;
+		return err
+	}
+	goCover_44b1aa629e35__134[5] = 1;select {
+	case <-ctx.Done():goCover_44b1aa629e35__134[13] = 1;
+		return ctx.Err()
+	case <-time.After(ConsumeDuration + 4*TickRate):goCover_44b1aa629e35__134[14] = 1; // a little margin over 32 ticks
+	}
+	// Release the use, which is what commits it.
+	goCover_44b1aa629e35__134[6] = 1;w := protocol.NewWriter(c.v.Packets.SBPlayBlockDig).
+		VarInt(protocol.DigReleaseUse).
+		BlockPos(0, 0, 0).
+		I8(0).
+		VarInt(c.nextSequence())
+	if err := c.conn.WritePacket(w.Bytes()); err != nil {goCover_44b1aa629e35__134[15] = 1;
+		return err
+	}
+
+	goCover_44b1aa629e35__134[7] = 1;if !hadItem {goCover_44b1aa629e35__134[16] = 1;
+		return errors.New("client: nothing in hand to consume")
+	}
+	// Let the resulting slot update arrive before judging the outcome.
+	goCover_44b1aa629e35__134[8] = 1;select {
+	case <-ctx.Done():goCover_44b1aa629e35__134[17] = 1;
+		return ctx.Err()
+	case <-time.After(8 * TickRate):goCover_44b1aa629e35__134[18] = 1;
+	}
+
+	// The stack shrinking is the reliable signal, and it is the right one even
+	// for items that *can* be eaten at full hunger (golden apples) or that
+	// change into something else (a milk bucket becoming an empty one).
+	goCover_44b1aa629e35__134[9] = 1;after, stillHeld := c.HeldItem()
+	consumed := !stillHeld || after.Name != before.Name || after.Count < before.Count
+	if !consumed {goCover_44b1aa629e35__134[19] = 1;
+		health, food := c.Health()
+		return fmt.Errorf(
+			"client: %s was not consumed (still %d in hand; food %d/20, health %.0f) — "+
+				"ordinary food is refused at full hunger",
+			before.Name, after.Count, food, health)
+	}
+	goCover_44b1aa629e35__134[10] = 1;return nil
+}
+
+// ConsumeItem holds a named item and consumes it.
+func (c *Client) ConsumeItem(ctx context.Context, name string) (ItemStack, error) {goCover_44b1aa629e35__135[0] = 6 ; goCover_44b1aa629e35__135[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__135[2] = 135 ; goCover_44b1aa629e35__135[3] = 1;
+	item, err := c.HoldItem(name)
+	if err != nil {goCover_44b1aa629e35__135[6] = 1;
+		return ItemStack{}, err
+	}
+	// Give the server a moment to register the slot change before the use
+	// starts, or the wrong item gets eaten.
+	goCover_44b1aa629e35__135[4] = 1;select {
+	case <-ctx.Done():goCover_44b1aa629e35__135[7] = 1;
+		return item, ctx.Err()
+	case <-time.After(4 * TickRate):goCover_44b1aa629e35__135[8] = 1;
+	}
+	goCover_44b1aa629e35__135[5] = 1;return item, c.Consume(ctx)
+}
+
+// UseOnBlock right-clicks a block without placing anything — opening a
+// crafting table, anvil, furnace or chest, or using a bed.
+//
+// It is the same packet as PlaceBlock; what differs is intent and what is in
+// hand. Several statistics (interact_with_anvil and friends) count the GUI
+// opening rather than any item being used, so an empty hand is usually right.
+func (c *Client) UseOnBlock(x, y, z, face int32) error {goCover_44b1aa629e35__136[0] = 1 ; goCover_44b1aa629e35__136[1] = goCover_44b1aa629e35_P ; goCover_44b1aa629e35__136[2] = 136 ; goCover_44b1aa629e35__136[3] = 1;
+	return c.PlaceBlock(x, y, z, face)
+}
+
+// ErrNoVersion is returned when an action needs a resolved protocol version.
+var ErrNoVersion = errors.New("client: version not resolved; call Connect first")
