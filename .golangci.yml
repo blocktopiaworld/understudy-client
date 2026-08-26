@@ -1,0 +1,118 @@
+# Lint configuration for understudy-client (golangci-lint v2 schema).
+#
+# The set is deliberately opinionated rather than exhaustive: every linter here
+# has caught something real in this codebase, or guards a mistake a wire
+# protocol is specifically prone to — ignored errors, unchecked assertions,
+# functions growing back into the monoliths this repo was split out of.
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    # Correctness
+    - errcheck # an ignored error in a packet write is a silently dropped action
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - bodyclose
+    - errorlint # %w and errors.Is/As rather than == and string matching
+    - nilerr
+    - copyloopvar
+
+    # Clarity
+    - misspell
+    - unconvert
+    - wastedassign
+    - usestdlibvars
+    - revive
+
+    # Sizing — the whole point of the split; keep it from creeping back
+    - gocognit
+    - funlen
+    - dupl
+
+    # Security
+    - gosec
+
+  settings:
+    gocognit:
+      # Packet dispatch is a wide switch by nature; beyond this is a function
+      # that should have been split.
+      min-complexity: 30
+    funlen:
+      lines: 130
+      statements: 80
+    dupl:
+      threshold: 200
+    errcheck:
+      check-type-assertions: true
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: indent-error-flow
+        - name: error-strings
+        - name: error-naming
+        - name: receiver-naming
+        - name: context-as-argument
+        - name: var-naming
+    gosec:
+      excludes:
+        # The chunk dump's file mode is deliberate; it is a debug aid written
+        # only when UNDERSTUDY_DUMP_CHUNK asks for it.
+        - G306
+
+        # G115 (integer overflow on conversion) does not survive contact with a
+        # wire protocol. Narrowing *is* the encoding: a port is written as a
+        # signed short, a block face as one signed byte, a paletted entry width
+        # as a byte. Every such conversion here is either a bit-preserving
+        # reinterpret the format demands, or is bounded at the point the value
+        # enters the process.
+        #
+        # This is only defensible because the bounds are enforced rather than
+        # assumed — protocol.ValidFace rejects an out-of-range face at the API
+        # boundary, MaxBitsPerEntry rejects a corrupt entry width before it is
+        # used as a divisor, and MaxStringLen bounds a decoded length. Leaving
+        # G115 on instead produced twenty findings that were all the format
+        # working as designed, which is how a real one gets missed.
+        - G115
+
+  exclusions:
+    generated: lax
+    paths:
+      # Sources carved out of the Go build cache after the 2026-08-26 deletion.
+      # Reference material, not part of the module.
+      - .recovered
+    rules:
+      # Generated protocol tables: thousands of literal entries, no logic. Two
+      # Minecraft versions naturally share most of their entity and item names,
+      # so `dupl` fires on every pair of tables.
+      - path: 'protocol/version_.*\.go'
+        linters: [dupl, funlen, gocognit, unused, revive, misspell]
+
+      # Tests: table-driven cases are repetitive on purpose, and a stub
+      # implementing a wide interface is many one-line methods.
+      - path: '_test\.go'
+        linters: [dupl, funlen, gocognit, gosec, errcheck, revive]
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/blocktopia/understudy-client
+  exclusions:
+    generated: lax
+    paths:
+      - .recovered

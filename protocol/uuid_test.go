@@ -40,8 +40,13 @@ func TestOfflineUUIDSetsVersionAndVariant(t *testing.T) {
 }
 
 func TestOfflineUUIDIsDeterministicAndDistinct(t *testing.T) {
-	if OfflineUUID("Same") != OfflineUUID("Same") {
-		t.Error("OfflineUUID is not deterministic")
+	// Deriving the same name twice must agree: the server derives it
+	// independently on every join, so any variance would address a different
+	// player each session.
+	name := "Same"
+	first, second := OfflineUUID(name), OfflineUUID(name)
+	if first != second {
+		t.Errorf("OfflineUUID(%q) gave %s then %s; it must be deterministic", name, first, second)
 	}
 	if OfflineUUID("One") == OfflineUUID("Two") {
 		t.Error("different names produced the same UUID")
