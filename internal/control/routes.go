@@ -544,11 +544,18 @@ func (s *Server) attack(ctx context.Context, in struct {
 	if in.Type == "" {
 		return nil, invalidf("attack: need entity_id or type")
 	}
-	target, err := s.bot.AttackTimes(ctx, in.Type, times)
+	// hits is what landed, not what was asked for: the target can die partway
+	// through, and a caller checking its own assertion needs the real number.
+	target, hits, err := s.bot.AttackTimes(ctx, in.Type, times)
 	if err != nil {
 		return nil, err
 	}
-	return body{"hits": times, "target_id": target.ID, "target_type": target.TypeName}, nil
+	return body{
+		"hits":        hits,
+		"requested":   times,
+		"target_id":   target.ID,
+		"target_type": target.TypeName,
+	}, nil
 }
 
 func (s *Server) dig(ctx context.Context, in struct {

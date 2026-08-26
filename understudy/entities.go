@@ -3,6 +3,7 @@ package understudy
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -41,12 +42,21 @@ func (c *Client) EntitiesOfType(typeName string) []Entity {
 	return list
 }
 
+// ErrNoSuchEntity reports that nothing of the requested type is being tracked.
+//
+// It is a sentinel because "there is none" and "there is one but you cannot
+// reach it" are different answers that callers act on differently — killing
+// the last of something is a success, being out of range is not. See
+// AttackTimes, which relies on telling them apart.
+var ErrNoSuchEntity = errors.New("understudy: no tracked entity")
+
 // NearestEntity returns the closest entity of the given type. An empty
-// typeName matches any type.
+// typeName matches any type. It returns an error wrapping ErrNoSuchEntity if
+// nothing of that type is tracked.
 func (c *Client) NearestEntity(typeName string) (Entity, error) {
 	candidates := c.entities.Matching(typeName)
 	if len(candidates) == 0 {
-		return Entity{}, fmt.Errorf("understudy: no tracked entity of type %q", typeName)
+		return Entity{}, fmt.Errorf("%w of type %q", ErrNoSuchEntity, typeName)
 	}
 	// Only the minimum is needed, so pick it in one pass rather than sorting
 	// the whole view distance to read element zero.
@@ -186,20 +196,35 @@ const AttackCooldown = 600 * time.Millisecond
 //
 // The target is re-selected every swing: the previous one may have died, and
 // hitting a corpse's stale ID does nothing.
-func (c *Client) AttackTimes(ctx context.Context, typeName string, times int) (Entity, error) {
+//
+// It returns the number of hits that actually landed, which can be fewer than
+// asked for. Running out of targets is not an error once something has been
+// hit — a diamond pickaxe one-shots a chicken, so "attack it three times"
+// legitimately lands one hit and finds nothing left to swing at. Reporting
+// that as a failure blames the caller for succeeding. Finding nothing on the
+// *first* swing is still an error, because then nothing was attacked at all.
+func (c *Client) AttackTimes(ctx context.Context, typeName string, times int) (Entity, int, error) {
 	var target Entity
+	hits := 0
 	for i := range times {
 		if i > 0 {
 			if err := wait(ctx, AttackCooldown); err != nil {
-				return target, err
+				return target, hits, err
 			}
 		}
-		var err error
-		if target, err = c.AttackNearest(typeName); err != nil {
-			return target, err
+		next, err := c.AttackNearest(typeName)
+		if err != nil {
+			if hits > 0 && errors.Is(err, ErrNoSuchEntity) {
+				// Nothing left of that type: the previous hits killed it.
+				c.log.Debug("attack ran out of targets", "type", typeName, "hits", hits)
+				return target, hits, nil
+			}
+			return target, hits, err
 		}
+		target = next
+		hits++
 	}
-	return target, nil
+	return target, hits, nil
 }
 
 // maxEntitiesPerPacket bounds a destroy list, so a corrupt count cannot make

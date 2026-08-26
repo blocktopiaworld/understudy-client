@@ -78,7 +78,7 @@ type Bot interface {
 	EntitiesOfType(typeName string) []understudy.Entity
 	DistanceTo(e understudy.Entity) float64
 	Attack(entityID int32) error
-	AttackTimes(ctx context.Context, typeName string, times int) (understudy.Entity, error)
+	AttackTimes(ctx context.Context, typeName string, times int) (understudy.Entity, int, error)
 	InteractEntity(entityID int32) error
 	InteractNearest(typeName string) (understudy.Entity, error)
 

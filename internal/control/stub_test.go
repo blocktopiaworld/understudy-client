@@ -28,7 +28,10 @@ type stubBot struct {
 	support  understudy.Support
 	hit      understudy.RayHit
 	hitOK    bool
-	version  *protocol.Version
+	// hitsLanded, when set below the requested count, models a target that
+	// died partway through an attack run.
+	hitsLanded int
+	version    *protocol.Version
 
 	// what the handlers get back
 	err error
@@ -229,13 +232,18 @@ func (b *stubBot) Attack(entityID int32) error {
 	b.attacks++
 	return b.err
 }
-func (b *stubBot) AttackTimes(ctx context.Context, typeName string, times int) (understudy.Entity, error) {
+func (b *stubBot) AttackTimes(ctx context.Context, typeName string, times int) (understudy.Entity, int, error) {
 	b.record("AttackTimes:" + typeName)
 	b.attacks += times
 	if b.err != nil {
-		return understudy.Entity{}, b.err
+		return understudy.Entity{}, 0, b.err
 	}
-	return understudy.Entity{ID: 5, TypeName: protocol.Namespaced(typeName)}, nil
+	// hitsLanded lets a test model a target that dies partway through.
+	hits := times
+	if b.hitsLanded > 0 && b.hitsLanded < times {
+		hits = b.hitsLanded
+	}
+	return understudy.Entity{ID: 5, TypeName: protocol.Namespaced(typeName)}, hits, nil
 }
 func (b *stubBot) InteractEntity(entityID int32) error { b.record("InteractEntity"); return b.err }
 func (b *stubBot) InteractNearest(typeName string) (understudy.Entity, error) {

@@ -2,6 +2,7 @@ package understudy
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -384,8 +385,58 @@ func TestAttackTimesRespectsTheCooldown(t *testing.T) {
 	// cut it short rather than the cooldown being skipped.
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	if _, err := c.AttackTimes(ctx, "zombie", 3); err == nil {
+	_, hits, err := c.AttackTimes(ctx, "zombie", 3)
+	if err == nil {
 		t.Error("AttackTimes = nil error with too short a deadline, want ctx.Err()")
+	}
+	// It still reports what it managed before the deadline, rather than
+	// discarding the count along with the error.
+	if hits != 1 {
+		t.Errorf("AttackTimes landed %d hits before the deadline, want 1", hits)
+	}
+}
+
+// A diamond pickaxe one-shots a chicken, so "attack it three times" lands one
+// hit and then finds nothing to swing at. That is the caller succeeding, and
+// used to be reported as "no tracked entity of type chicken" — an error that
+// blames the caller and names the wrong problem.
+func TestAttackTimesStopsWhenTheTargetDies(t *testing.T) {
+	c, _ := settled(t)
+	setPosition(c, 0, 0, 0)
+	c.entities.Spawn(&Entity{ID: 1, TypeName: "minecraft:chicken", X: 1})
+
+	// Killing it after the first swing is what the server would do.
+	go func() {
+		time.Sleep(AttackCooldown / 4)
+		c.entities.Remove([]int32{1})
+	}()
+
+	target, hits, err := c.AttackTimes(context.Background(), "chicken", 3)
+	if err != nil {
+		t.Fatalf("AttackTimes after the target died: %v, want nil", err)
+	}
+	if hits != 1 {
+		t.Errorf("hits = %d, want 1 — the chicken died after the first swing", hits)
+	}
+	if target.ID != 1 {
+		t.Errorf("target.ID = %d, want the chicken it did hit (1)", target.ID)
+	}
+}
+
+// Finding nothing on the *first* swing is still an error: nothing was attacked.
+func TestAttackTimesFailsWithNoTargetAtAll(t *testing.T) {
+	c, _ := settled(t)
+	setPosition(c, 0, 0, 0)
+
+	_, hits, err := c.AttackTimes(context.Background(), "chicken", 3)
+	if err == nil {
+		t.Fatal("AttackTimes with nothing to attack = nil error, want an error")
+	}
+	if !errors.Is(err, ErrNoSuchEntity) {
+		t.Errorf("error = %v, want it to wrap ErrNoSuchEntity", err)
+	}
+	if hits != 0 {
+		t.Errorf("hits = %d, want 0", hits)
 	}
 }
 
