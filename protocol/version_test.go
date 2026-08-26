@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -143,106 +144,61 @@ func TestSupportsAttackPacket(t *testing.T) {
 	}
 }
 
-// --- the generated tables --------------------------------------------------
+// --- the registry ----------------------------------------------------------
+//
+// These exercise the registry itself, so they register their own synthetic
+// versions rather than leaning on the generated tables. This package no longer
+// contains those — they live in protocol/versions, and importing them here
+// would be an import cycle. Their own tests check that they registered.
 
-// Importing the package must be enough to make every version available.
-func TestRegistryHasGeneratedVersions(t *testing.T) {
+// registerForTest adds a throwaway version and removes it afterwards.
+func registerForTest(t *testing.T, name string, proto int32) *Version {
+	t.Helper()
+	v := NewVersion(VersionSpec{Name: name, Protocol: proto})
+	Register(v)
+	t.Cleanup(func() {
+		registryMu.Lock()
+		defer registryMu.Unlock()
+		delete(byName, name)
+		delete(byProtocol, proto)
+	})
+	return v
+}
+
+func TestRegistryRoundTrip(t *testing.T) {
+	v := registerForTest(t, "round-trip", 990100)
+
+	got, err := ByName("round-trip")
+	if err != nil {
+		t.Fatalf("ByName: %v", err)
+	}
+	if got != v {
+		t.Errorf("ByName returned %p, want the registered %p", got, v)
+	}
+	if got, err = ByProtocol(990100); err != nil || got != v {
+		t.Errorf("ByProtocol(990100) = %v, %v; want the registered version", got, err)
+	}
+}
+
+func TestNamesIsSorted(t *testing.T) {
+	registerForTest(t, "zzz-sort", 990101)
+	registerForTest(t, "aaa-sort", 990102)
+
 	names := Names()
-	if len(names) == 0 {
-		t.Fatal("Names() is empty; no generated version registered itself")
-	}
-	for i := 1; i < len(names); i++ {
-		if names[i-1] > names[i] {
-			t.Errorf("Names() is not sorted: %q before %q", names[i-1], names[i])
-		}
-	}
-	for _, name := range names {
-		v, err := ByName(name)
-		if err != nil {
-			t.Fatalf("ByName(%q): %v", name, err)
-		}
-		got, err := ByProtocol(v.Protocol)
-		if err != nil {
-			t.Fatalf("ByProtocol(%d): %v", v.Protocol, err)
-		}
-		if got != v {
-			t.Errorf("ByProtocol(%d) returned %q, want %q", v.Protocol, got.Name, name)
-		}
-	}
-}
-
-// Every generated table must be usable for the things the client actually
-// does. A missing packet ID is -1, which never matches and never sends — so
-// the failure is silent unless something checks.
-func TestGeneratedVersionsAreComplete(t *testing.T) {
-	required := []struct {
-		name string
-		id   func(*Version) int32
-	}{
-		{"handshake", func(v *Version) int32 { return v.Packets.SBHandshake }},
-		{"login_start", func(v *Version) int32 { return v.Packets.SBLoginStart }},
-		{"play login", func(v *Version) int32 { return v.Packets.CBPlayLogin }},
-		{"map_chunk", func(v *Version) int32 { return v.Packets.CBPlayMapChunk }},
-		{"position (clientbound)", func(v *Version) int32 { return v.Packets.CBPlayPosition }},
-		{"position_look", func(v *Version) int32 { return v.Packets.SBPlayPositionLook }},
-		{"block_dig", func(v *Version) int32 { return v.Packets.SBPlayBlockDig }},
-		{"block_place", func(v *Version) int32 { return v.Packets.SBPlayBlockPlace }},
-		{"window_click", func(v *Version) int32 { return v.Packets.SBPlayWindowClick }},
-		{"keep_alive", func(v *Version) int32 { return v.Packets.CBPlayKeepAlive }},
-	}
-	for _, name := range Names() {
-		v, err := ByName(name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, req := range required {
-			if id := req.id(v); id < 0 {
-				t.Errorf("%s: %s is Absent, so the client would silently never use it", name, req.name)
-			}
-		}
-		if len(v.entityNames) < 50 {
-			t.Errorf("%s: only %d entity names", name, len(v.entityNames))
-		}
-		if len(v.itemNames) < 500 {
-			t.Errorf("%s: only %d item names", name, len(v.itemNames))
-		}
-		if !v.IsAir(AirState) {
-			t.Errorf("%s: state 0 is not classified as air", name)
-		}
-		if len(v.solidStates) < 10 {
-			t.Errorf("%s: only %d solid ranges", name, len(v.solidStates))
-		}
-		if len(v.waterStates) == 0 {
-			t.Errorf("%s: no water states", name)
-		}
-	}
-}
-
-// Both flags are protocol-number thresholds, and both are invisible until
-// wrong. 26.1 is protocol 775; the size prefix went away in 1.21.5 (770).
-func TestGeneratedChunkFormatFollowsTheProtocolNumber(t *testing.T) {
-	for _, name := range Names() {
-		v, _ := ByName(name)
-		wantSizePrefix := v.Protocol < 770
-		wantFluidCount := v.Protocol >= 775
-		if v.Chunk.HasSizePrefix != wantSizePrefix {
-			t.Errorf("%s (protocol %d): HasSizePrefix = %v, want %v",
-				name, v.Protocol, v.Chunk.HasSizePrefix, wantSizePrefix)
-		}
-		if v.Chunk.HasFluidCount != wantFluidCount {
-			t.Errorf("%s (protocol %d): HasFluidCount = %v, want %v",
-				name, v.Protocol, v.Chunk.HasFluidCount, wantFluidCount)
-		}
+	if !slices.IsSorted(names) {
+		t.Errorf("Names() = %v, want sorted", names)
 	}
 }
 
 func TestRegistryUnknownLookups(t *testing.T) {
+	registerForTest(t, "listed-version", 990103)
+
 	_, err := ByName("not-a-version")
 	if err == nil {
 		t.Fatal("ByName of an unknown version = nil error, want an error")
 	}
 	// The error has to list what *is* available, or the operator has no next step.
-	if !strings.Contains(err.Error(), Names()[0]) {
+	if !strings.Contains(err.Error(), "listed-version") {
 		t.Errorf("ByName error %q does not list the supported versions", err)
 	}
 	if _, err := ByProtocol(-12345); err == nil {

@@ -289,26 +289,41 @@ func TestBlockActionsWaitForTheTeleportToSettle(t *testing.T) {
 		return s.countOf(c.v.Packets.SBPlayTeleportConfirm) > 0
 	})
 
-	// A dig issued immediately must not reach the wire until the window passes.
+	// A dig issued immediately must answer the server before it acts: the state
+	// being waited on is "awaiting position from client", so the gate sends a
+	// position rather than sleeping until one happens along.
+	before := s.countOf(c.v.Packets.SBPlayPositionLook)
 	start := time.Now()
 	if err := c.StartDig(context.Background(), 0, 63, 0, 1); err != nil {
 		t.Fatalf("StartDig: %v", err)
 	}
-	if elapsed := time.Since(start); elapsed < TeleportSettle/2 {
-		t.Errorf("StartDig returned after %v, want it to wait out most of the %v settle window",
-			elapsed, TeleportSettle)
+	elapsed := time.Since(start)
+
+	if after := s.countOf(c.v.Packets.SBPlayPositionLook); after <= before {
+		t.Errorf("StartDig sent no position packet (%d then %d), want the gate to answer the "+
+			"server rather than wait for it", before, after)
 	}
 	if s.countOf(c.v.Packets.SBPlayBlockDig) == 0 {
 		t.Error("no block_dig packet reached the server")
 	}
+	// It still waits — the server needs a tick to act on that position — but a
+	// tick, not the whole window. Sleeping the window out cost 346ms a time
+	// across eleven repositions per field, which is what made this worth fixing.
+	if elapsed < TickRate/2 {
+		t.Errorf("StartDig returned after %v, want it to give the server ~%v to act", elapsed, TickRate)
+	}
+	if elapsed > TeleportSettle/2 {
+		t.Errorf("StartDig took %v, want roughly one %v tick — not the %v window",
+			elapsed, TickRate, TeleportSettle)
+	}
 
-	// A second action costs nothing: the window has already been paid.
+	// A second action costs nothing: the server has our position already.
 	start = time.Now()
 	if err := c.StartDig(context.Background(), 0, 63, 0, 1); err != nil {
 		t.Fatalf("second StartDig: %v", err)
 	}
-	if elapsed := time.Since(start); elapsed > 50*time.Millisecond {
-		t.Errorf("the second StartDig took %v, want ~0 — the window is already paid", elapsed)
+	if elapsed := time.Since(start); elapsed > 10*time.Millisecond {
+		t.Errorf("the second StartDig took %v, want ~0 — the server is already answered", elapsed)
 	}
 }
 

@@ -6,15 +6,41 @@
 // bytes on and off a socket correctly, which is why it is separable from the
 // package that decides what to do with them.
 //
+// # Files
+//
+//	conn.go       framing, compression, the read/write halves of a connection
+//	varint.go     VarInt and VarLong, the two encodings everything else rests on
+//	reader.go     bounded field decoding; accumulates the first error
+//	writer.go     field encoding
+//	chunk.go      paletted chunk containers and block-state lookup
+//	version.go    Version, VersionSpec, and the per-version lookups
+//	registry.go   the name and protocol-number registries
+//	constants.go  wire constants: packet states, dig statuses, slot indices
+//	names.go      namespacing helpers for item and entity names
+//	uuid.go       offline-mode UUID derivation
+//
+// The generated tables are not here. They are ~9,700 lines across three files,
+// which in one directory buries the ten hand-written ones above; they live in
+// protocol/versions instead.
+//
 // # Versions
 //
 // Almost everything that changes between Minecraft releases is a number in a
 // table rather than a branch in code. Packet IDs are dense indices that shift
 // whenever Mojang inserts a packet; entity and item names are indexed by wire
 // ID; block-state classification is a set of ranges. Those tables are
-// generated from minecraft-data by internal/gen/genversion.mjs and register
-// themselves from init, so importing this package is enough to make every
-// supported version available — see ByName and ByProtocol.
+// generated from minecraft-data by internal/gen/genversion.mjs into
+// protocol/versions, where they register themselves from init.
+//
+// So this package defines the machinery and protocol/versions supplies the
+// data. Importing protocol alone gives you an empty registry — something must
+// import protocol/versions for ByName and ByProtocol to resolve anything. The
+// understudy package does that for you; a program using protocol directly
+// needs the blank import itself.
+//
+// Keeping the data out means a test, or a tool that speaks one version, can
+// build exactly the Version it needs through NewVersion without linking in
+// three full tables.
 //
 // The handful of genuine format differences that cannot be expressed as a
 // table live in ChunkFormat, and each is documented with the symptom it causes
