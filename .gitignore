@@ -11,7 +11,3 @@
 .DS_Store
 *.swp
 .idea/
-
-# Sources carved out of the Go build cache after the 2026-08-26 deletion.
-# Reference only — not part of the module.
-/.recovered/

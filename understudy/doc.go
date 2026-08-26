@@ -71,6 +71,7 @@
 //	heartbeat.go   idle position reporting, ~20/s, like a real client
 //	settle.go      the post-teleport gate on block interactions
 //	detect.go      server-list ping and version auto-detection
+//	versions.go    the blank import that registers the generated protocol tables
 //
 //	world.go       terrain: chunk storage, ground scans, block queries
 //	entities.go    entity tracking, targeting, attacking, interacting
@@ -87,6 +88,13 @@
 //	bow.go         drawing and loosing
 //	verbs.go       input bits, sneaking, equipping, eating
 //	geometry.go    re-exports of internal/geom, so callers need not import it
+//
+// The state those files operate on lives in its own packages, because a
+// mutex-guarded store that never needs a Client is testable without one:
+// internal/world (chunks and block states), internal/entities (the tracker)
+// and internal/inventory (slots and stacks). Client keeps thin delegating
+// methods, and Entity and ItemStack are aliases, so no caller imports an
+// internal package to name a type.
 //
 // # Concurrency
 //
