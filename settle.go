@@ -23,28 +23,31 @@ import (
 // gone first. A bare arm swing did *not* help, which is what ruled out "the
 // session is not warm yet".
 //
-// # Status: retained, but NOT reproduced here
+// # Status: redundant given the idle position loop, kept as a backstop
 //
-// A direct A/B against a local Fabric 26.1.2 server could not reproduce the
-// failure: 6/6 fresh-session placements succeeded both with this gate and with
-// it set to zero. So on that server this wait is buying nothing measurable.
+// A direct A/B against a live Fabric 26.1.2 server measured 6/6 fresh-session
+// placements both with this gate and with it set to zero — no difference.
 //
-// It is kept because it is close to free — the window is measured from the
-// last teleport echo, so a bot that has been standing still or mining has
-// already waited it out, and only the first interaction after a teleport pays
-// anything at all — and because the report came from a different server under a
-// real workload, which that bench did not replicate.
+// That is not because the failure was imaginary. Both arms of that test were
+// running startPositionLoop, and an idle position ticker is the *actual* fix
+// for this: the server is waiting for a position from the client, and a client
+// that sends one every tick answers within a tick. The measurement above was
+// taken against a client that sent none at all, so it was silent for as long
+// as the server cared to wait.
 //
-// What the local run *did* find is a different failure with the same symptom,
-// and it is worth ruling out first: a block action issued before the client has
-// processed the teleport is rejected for being out of reach, because the
-// client is still measuring from where it used to be. On a fresh session the
-// read loop is busy absorbing a flood of chunk batches, so that window is
-// hundreds of milliseconds. Waiting for the client's position to reflect the
-// teleport is deterministic, and faster than any fixed sleep.
+// So the gate is a backstop for the case where the heartbeat is off
+// (Options.DisableIdlePosition) or has not started yet — it begins on the first
+// teleport, and a caller can act before that. It is close to free either way:
+// the window is measured from the last teleport echo, so a bot that has been
+// standing still or mining has already waited it out.
 //
-// Before tuning this constant, confirm which of the two is actually happening:
-// the reach rejection is loud and returns an error, this one is silent.
+// There is also a *different* failure with the same symptom, worth ruling out
+// first because it is far easier to hit: a block action issued before the
+// client has processed the teleport is rejected for being out of reach, because
+// the client is still measuring from where it used to be. On a fresh session
+// the read loop is busy absorbing a flood of chunk batches, so that window is
+// hundreds of milliseconds. That one is loud — it returns an error naming the
+// distance. This one is silent.
 const TeleportSettle = 350 * time.Millisecond
 
 // markTeleportEcho stamps when the reply to a server teleport went out.

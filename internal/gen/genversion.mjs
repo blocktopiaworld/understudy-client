@@ -161,17 +161,12 @@ if (missing.length) {
 //                  count of longs; from 1.21.5 it is computed.
 //   HasFluidCount: from 26.1 each section carries a second int16 after the
 //                  solid block count.
-const CHUNK_FORMAT = {
-  '1.21.4': { hasSizePrefix: true, hasFluidCount: false },
-  '1.21.11': { hasSizePrefix: false, hasFluidCount: false },
-  '26.1': { hasSizePrefix: false, hasFluidCount: true },
-}
-const chunkFormat = CHUNK_FORMAT[version]
-if (!chunkFormat) {
-  console.error(`genversion: no chunk format recorded for ${version}.`)
-  console.error('Add one to CHUNK_FORMAT — it cannot be inferred, and guessing')
-  console.error('produces a table that decodes garbage several sections in.')
-  process.exit(1)
+// Both thresholds are protocol numbers, taken from prismarine-chunk:
+//   < 770 is pre-1.21.5, when the data array still carried its length
+//   >= 775 is 26.1+, which added the per-section fluid count
+const chunkFormat = {
+  hasSizePrefix: versionInfo.version < 770,
+  hasFluidCount: versionInfo.version >= 775,
 }
 
 // --- name tables -----------------------------------------------------------
