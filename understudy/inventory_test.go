@@ -1,0 +1,409 @@
+package understudy
+
+import (
+	"testing"
+
+	"github.com/blocktopia/understudy-client/protocol"
+)
+
+func stack(slot int, name string, count int32) ItemStack {
+	return ItemStack{Slot: slot, Name: protocol.Namespaced(name), Count: count}
+}
+
+func TestInventorySortedBySlot(t *testing.T) {
+	inv := newInventory()
+	for _, s := range []int{40, 9, 36, 0, 45} {
+		inv.setSlot(s, stack(s, "dirt", 1))
+	}
+	got := inv.sorted()
+	want := []int{0, 9, 36, 40, 45}
+	if len(got) != len(want) {
+		t.Fatalf("sorted() returned %d slots, want %d", len(got), len(want))
+	}
+	for i, slot := range want {
+		if got[i].Slot != slot {
+			t.Errorf("sorted()[%d].Slot = %d, want %d", i, got[i].Slot, slot)
+		}
+	}
+}
+
+func TestInventoryEmptySlotDeletes(t *testing.T) {
+	inv := newInventory()
+	inv.setSlot(9, stack(9, "dirt", 5))
+	if _, ok := inv.slot(9); !ok {
+		t.Fatal("slot 9 missing after setSlot")
+	}
+	// A zero count means the slot is now empty; it must be removed rather than
+	// linger as a phantom stack.
+	inv.setSlot(9, ItemStack{Slot: 9})
+	if _, ok := inv.slot(9); ok {
+		t.Error("slot 9 still present after being set empty")
+	}
+}
+
+func TestInventoryReplaceAll(t *testing.T) {
+	inv := newInventory()
+	inv.setSlot(1, stack(1, "dirt", 1))
+	inv.replaceAll([]ItemStack{stack(9, "oak_log", 3)}, true)
+
+	if _, ok := inv.slot(1); ok {
+		t.Error("slot 1 survived replaceAll, want the whole window replaced")
+	}
+	if it, ok := inv.slot(9); !ok || it.Count != 3 {
+		t.Errorf("slot 9 = %+v, %v; want oak_log x3", it, ok)
+	}
+	if !inv.isTruncated() {
+		t.Error("isTruncated() = false after a truncated snapshot")
+	}
+}
+
+// The fuzzy suffix match is a convenience, but it must not shadow an exact
+// one: "oak_planks" also suffix-matches "dark_oak_planks", and picking that
+// crafts the wrong recipe.
+func TestFindItemPrefersExactMatch(t *testing.T) {
+	items := []ItemStack{
+		stack(9, "dark_oak_planks", 10),
+		stack(20, "oak_planks", 5),
+	}
+	got, ok := findItem(items, "oak_planks")
+	if !ok {
+		t.Fatal("findItem(oak_planks) found nothing")
+	}
+	if got.Slot != 20 {
+		t.Errorf("findItem(oak_planks) = slot %d (%s), want slot 20 (the exact match)",
+			got.Slot, got.Name)
+	}
+}
+
+func TestFindItem(t *testing.T) {
+	items := []ItemStack{
+		stack(9, "diamond_pickaxe", 1),
+		stack(12, "dirt", 64),
+		stack(36, "dirt", 32),
+	}
+	for _, tc := range []struct {
+		name     string
+		query    string
+		wantSlot int
+		wantOK   bool
+	}{
+		{"exact bare name", "dirt", 12, true},
+		{"exact namespaced name", "minecraft:dirt", 12, true},
+		{"fuzzy suffix", "pickaxe", 9, true},
+		{"lowest slot wins among equals", "dirt", 12, true},
+		{"not present", "emerald", 0, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := findItem(items, tc.query)
+			if ok != tc.wantOK {
+				t.Fatalf("findItem(%q) found = %v, want %v", tc.query, ok, tc.wantOK)
+			}
+			if ok && got.Slot != tc.wantSlot {
+				t.Errorf("findItem(%q) = slot %d, want %d", tc.query, got.Slot, tc.wantSlot)
+			}
+		})
+	}
+}
+
+// Server implementations disagree about what "the inventory" means: 36 storage
+// slots, or the whole container including armour and the offhand. Reporting
+// both numbers is what lets a caller detect that divergence.
+func TestCountItemVersusStorage(t *testing.T) {
+	c := newTestClient(t)
+	c.inv.setSlot(9, stack(9, "dirt", 10))  // main inventory
+	c.inv.setSlot(36, stack(36, "dirt", 5)) // hotbar
+	c.inv.setSlot(SlotOffhand, stack(SlotOffhand, "dirt", 3))
+	c.inv.setSlot(SlotArmorHead, stack(SlotArmorHead, "dirt", 1))
+
+	if got := c.CountItem("dirt"); got != 19 {
+		t.Errorf("CountItem(dirt) = %d, want 19 (everything)", got)
+	}
+	if got := c.CountItemStorage("dirt"); got != 15 {
+		t.Errorf("CountItemStorage(dirt) = %d, want 15 (the 36 storage slots only)", got)
+	}
+}
+
+// Counting is exact-match only: a fuzzy total would silently add
+// dark_oak_planks to an oak_planks count.
+func TestCountItemDoesNotMatchFuzzily(t *testing.T) {
+	c := newTestClient(t)
+	c.inv.setSlot(9, stack(9, "oak_planks", 4))
+	c.inv.setSlot(10, stack(10, "dark_oak_planks", 4))
+
+	if got := c.CountItem("oak_planks"); got != 4 {
+		t.Errorf("CountItem(oak_planks) = %d, want 4 — dark_oak_planks must not be counted", got)
+	}
+}
+
+func TestFreeStorageSlots(t *testing.T) {
+	c := newTestClient(t)
+	if got := c.FreeStorageSlots(); got != StorageSlots {
+		t.Errorf("FreeStorageSlots() on an empty inventory = %d, want %d", got, StorageSlots)
+	}
+	c.inv.setSlot(9, stack(9, "dirt", 1))
+	c.inv.setSlot(36, stack(36, "dirt", 1))
+	// Armour and the offhand are outside the 36 and must not count.
+	c.inv.setSlot(SlotOffhand, stack(SlotOffhand, "dirt", 1))
+	if got := c.FreeStorageSlots(); got != StorageSlots-2 {
+		t.Errorf("FreeStorageSlots() = %d, want %d", got, StorageSlots-2)
+	}
+}
+
+// Totems stack to 1, so "hold 5 totems" needs five whole slots, while
+// "hold 2304 dirt" needs exactly 36 — every storage slot a player has.
+func TestSlotsNeeded(t *testing.T) {
+	c := newTestClient(t)
+	for _, tc := range []struct {
+		name      string
+		item      string
+		count     int32
+		wantSlots int
+		wantFits  bool
+	}{
+		{"nothing", "dirt", 0, 0, true},
+		{"one stack", "dirt", 64, 1, true},
+		{"one over a stack", "dirt", 65, 2, true},
+		{"exactly the inventory", "dirt", 2304, 36, true},
+		{"one over the inventory", "dirt", 2305, 37, false},
+		{"unstackable", "totem_of_undying", 5, 5, true},
+		{"unknown item defaults to 64", "mystery_item", 64, 1, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			slots, fits := c.SlotsNeeded(tc.item, tc.count)
+			if slots != tc.wantSlots || fits != tc.wantFits {
+				t.Errorf("SlotsNeeded(%q, %d) = %d, %v; want %d, %v",
+					tc.item, tc.count, slots, fits, tc.wantSlots, tc.wantFits)
+			}
+		})
+	}
+}
+
+func TestHeldItemTracksTheSelectedSlot(t *testing.T) {
+	c := newTestClient(t)
+	c.inv.setSlot(SlotHotbarStart+3, stack(SlotHotbarStart+3, "diamond_pickaxe", 1))
+
+	if _, ok := c.HeldItem(); ok {
+		t.Error("HeldItem() found something in slot 0, want nothing")
+	}
+	c.setHeldSlotLocal(3)
+	got, ok := c.HeldItem()
+	if !ok || got.Name != "minecraft:diamond_pickaxe" {
+		t.Errorf("HeldItem() = %+v, %v; want the pickaxe", got, ok)
+	}
+}
+
+func TestSetHeldSlotRange(t *testing.T) {
+	c := newTestClient(t)
+	for _, slot := range []int{-1, 9, 100} {
+		if err := c.SetHeldSlot(slot); err == nil {
+			t.Errorf("SetHeldSlot(%d) = nil error, want an out-of-range error", slot)
+		}
+	}
+}
+
+func TestPickupTally(t *testing.T) {
+	c := newTestClient(t)
+	total, byItem := c.PickupsSeen()
+	if total != 0 || len(byItem) != 0 {
+		t.Errorf("a fresh client has picked up %d items, want 0", total)
+	}
+
+	c.inv.recordPickup(pickupItemKey, 3)
+	c.inv.recordPickup(pickupItemKey, 2)
+	total, byItem = c.PickupsSeen()
+	if total != 5 || byItem[pickupItemKey] != 5 {
+		t.Errorf("PickupsSeen() = %d, %v; want 5", total, byItem)
+	}
+
+	// The returned map must be a copy, or a caller could corrupt the tally.
+	byItem[pickupItemKey] = 999
+	if total, _ = c.PickupsSeen(); total != 5 {
+		t.Errorf("PickupsSeen() = %d after mutating the returned map, want 5", total)
+	}
+
+	c.ResetPickups()
+	if total, _ = c.PickupsSeen(); total != 0 {
+		t.Errorf("PickupsSeen() = %d after reset, want 0", total)
+	}
+}
+
+// --- slot decoding -----------------------------------------------------------
+
+func TestReadSlotEmpty(t *testing.T) {
+	v := testVersion(t)
+	r := protocol.NewReader(protocol.NewWriter(0).VarInt(0).Bytes()[1:])
+	got, err := readSlot(v, r)
+	if err != nil {
+		t.Fatalf("readSlot: %v", err)
+	}
+	if !got.Empty() {
+		t.Errorf("readSlot of a zero count = %+v, want empty", got)
+	}
+}
+
+// Removed components are just a list of type IDs, which *can* be skipped.
+func TestReadSlotWithRemovedComponents(t *testing.T) {
+	v := testVersion(t)
+	w := protocol.NewWriter(0).VarInt(5).VarInt(1).VarInt(0).VarInt(2).VarInt(7).VarInt(8)
+	got, err := readSlot(v, protocol.NewReader(w.Bytes()[1:]))
+	if err != nil {
+		t.Fatalf("readSlot: %v", err)
+	}
+	if got.Count != 5 || got.Name != "minecraft:dirt" {
+		t.Errorf("readSlot = %+v, want 5 dirt", got)
+	}
+}
+
+// An item carrying components cannot be skipped without decoding ~100 wire
+// shapes, so the decoder must report that it stopped rather than guess a
+// length and desynchronise the rest of the packet.
+func TestReadSlotRefusesAddedComponents(t *testing.T) {
+	v := testVersion(t)
+	w := protocol.NewWriter(0).VarInt(1).VarInt(5).VarInt(3).VarInt(0)
+	if _, err := readSlot(v, protocol.NewReader(w.Bytes()[1:])); err == nil {
+		t.Error("readSlot of an item with added components = nil error, want an error")
+	}
+}
+
+// A single-slot update puts the item last, so components can be ignored
+// outright — which is why an enchanted tool decodes here but not in a whole
+// window snapshot.
+func TestReadSlotFinalIgnoresComponents(t *testing.T) {
+	v := testVersion(t)
+	w := protocol.NewWriter(0).VarInt(1).VarInt(5).
+		VarInt(99).VarInt(1).VarInt(2).VarInt(3) // trailing component junk
+	got, err := readSlotFinal(v, protocol.NewReader(w.Bytes()[1:]))
+	if err != nil {
+		t.Fatalf("readSlotFinal: %v", err)
+	}
+	if got.Count != 1 || got.Name != "minecraft:diamond_pickaxe" {
+		t.Errorf("readSlotFinal = %+v, want 1 diamond_pickaxe", got)
+	}
+}
+
+// --- packet handling ---------------------------------------------------------
+
+func TestHandleWindowItems(t *testing.T) {
+	c := newTestClient(t)
+	p := packet(c.v.Packets.CBPlayWindowItems, func(w *protocol.Writer) {
+		w.VarInt(PlayerWindowID).VarInt(7).VarInt(3)
+		w.VarInt(0)                               // slot 0: empty
+		w.VarInt(2).VarInt(1).VarInt(0).VarInt(0) // slot 1: 2 dirt
+		w.VarInt(1).VarInt(2).VarInt(0).VarInt(0) // slot 2: 1 oak_log
+	})
+	handled, err := c.handleInventoryPacket(p)
+	if !handled || err != nil {
+		t.Fatalf("handleInventoryPacket = %v, %v", handled, err)
+	}
+	if got := c.inv.getStateID(); got != 7 {
+		t.Errorf("state id = %d, want 7", got)
+	}
+	if it, ok := c.SlotAt(1); !ok || it.Count != 2 || it.Name != "minecraft:dirt" {
+		t.Errorf("slot 1 = %+v, %v; want 2 dirt", it, ok)
+	}
+	if _, ok := c.SlotAt(0); ok {
+		t.Error("slot 0 is present, want it dropped as empty")
+	}
+	if c.InventoryTruncated() {
+		t.Error("InventoryTruncated() = true for a fully decoded window")
+	}
+}
+
+// A window that hits an undecodable item keeps what it read and says so; the
+// stream stays in sync because packets are length-framed.
+func TestHandleWindowItemsTruncates(t *testing.T) {
+	c := newTestClient(t)
+	p := packet(c.v.Packets.CBPlayWindowItems, func(w *protocol.Writer) {
+		w.VarInt(PlayerWindowID).VarInt(1).VarInt(2)
+		w.VarInt(2).VarInt(1).VarInt(0).VarInt(0) // slot 0: 2 dirt
+		w.VarInt(1).VarInt(5).VarInt(4).VarInt(0) // slot 1: has components
+	})
+	if _, err := c.handleInventoryPacket(p); err != nil {
+		t.Fatalf("handleInventoryPacket: %v", err)
+	}
+	if !c.InventoryTruncated() {
+		t.Error("InventoryTruncated() = false, want true after an undecodable item")
+	}
+	if it, ok := c.SlotAt(0); !ok || it.Count != 2 {
+		t.Errorf("slot 0 = %+v, %v; want the slots before the failure kept", it, ok)
+	}
+}
+
+func TestHandleWindowItemsIgnoresOtherWindows(t *testing.T) {
+	c := newTestClient(t)
+	c.inv.setSlot(9, stack(9, "dirt", 1))
+	p := packet(c.v.Packets.CBPlayWindowItems, func(w *protocol.Writer) {
+		w.VarInt(3).VarInt(1).VarInt(0) // a chest, not the player window
+	})
+	if _, err := c.handleInventoryPacket(p); err != nil {
+		t.Fatalf("handleInventoryPacket: %v", err)
+	}
+	if _, ok := c.SlotAt(9); !ok {
+		t.Error("a chest's contents cleared the player inventory")
+	}
+}
+
+func TestHandleWindowItemsRejectsImplausibleCount(t *testing.T) {
+	c := newTestClient(t)
+	p := packet(c.v.Packets.CBPlayWindowItems, func(w *protocol.Writer) {
+		w.VarInt(PlayerWindowID).VarInt(1).VarInt(1 << 20)
+	})
+	if _, err := c.handleInventoryPacket(p); err == nil {
+		t.Error("an implausible slot count = nil error, want an error")
+	}
+}
+
+func TestHandleSetSlot(t *testing.T) {
+	c := newTestClient(t)
+	p := packet(c.v.Packets.CBPlaySetSlot, func(w *protocol.Writer) {
+		w.VarInt(PlayerWindowID).VarInt(2).I16(36).VarInt(9).VarInt(1)
+	})
+	if _, err := c.handleInventoryPacket(p); err != nil {
+		t.Fatalf("handleInventoryPacket: %v", err)
+	}
+	if it, ok := c.SlotAt(36); !ok || it.Count != 9 || it.Name != "minecraft:dirt" {
+		t.Errorf("slot 36 = %+v, %v; want 9 dirt", it, ok)
+	}
+}
+
+// The server broadcasts everyone's pickups; only our own count.
+func TestHandleCollectOnlyCountsOurOwn(t *testing.T) {
+	c := newTestClient(t)
+	c.mu.Lock()
+	c.entityID = 100
+	c.mu.Unlock()
+
+	for _, p := range []protocol.Packet{
+		packet(c.v.Packets.CBPlayCollect, func(w *protocol.Writer) { w.VarInt(1).VarInt(100).VarInt(4) }),
+		packet(c.v.Packets.CBPlayCollect, func(w *protocol.Writer) { w.VarInt(2).VarInt(999).VarInt(7) }),
+	} {
+		if _, err := c.handleInventoryPacket(p); err != nil {
+			t.Fatalf("handleInventoryPacket: %v", err)
+		}
+	}
+	if total, _ := c.PickupsSeen(); total != 4 {
+		t.Errorf("PickupsSeen() = %d, want 4 — another player's pickup was counted", total)
+	}
+}
+
+// The server restores the previously-selected slot on reconnect, so the client
+// must adopt what it is told rather than assuming 0.
+func TestHandleHeldItemSlot(t *testing.T) {
+	c := newTestClient(t)
+	p := packet(c.v.Packets.CBPlayHeldItemSlot, func(w *protocol.Writer) { w.VarInt(4) })
+	if _, err := c.handleInventoryPacket(p); err != nil {
+		t.Fatalf("handleInventoryPacket: %v", err)
+	}
+	if got := c.HeldSlot(); got != 4 {
+		t.Errorf("HeldSlot() = %d, want 4", got)
+	}
+
+	// Out-of-range values from the wire must be ignored, not stored.
+	bad := packet(c.v.Packets.CBPlayHeldItemSlot, func(w *protocol.Writer) { w.VarInt(99) })
+	if _, err := c.handleInventoryPacket(bad); err != nil {
+		t.Fatalf("handleInventoryPacket: %v", err)
+	}
+	if got := c.HeldSlot(); got != 4 {
+		t.Errorf("HeldSlot() = %d after an out-of-range update, want it unchanged at 4", got)
+	}
+}
