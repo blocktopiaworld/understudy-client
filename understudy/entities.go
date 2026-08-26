@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/blocktopia/understudy-client/internal/geom"
 	"github.com/blocktopia/understudy-client/protocol"
 )
 
@@ -265,7 +266,7 @@ func (c *Client) PlayerEntity(name string) (Entity, error) {
 }
 
 func distance(p Position, e Entity) float64 {
-	return length(e.X-p.X, e.Y-p.Y, e.Z-p.Z)
+	return geom.Length(e.X-p.X, e.Y-p.Y, e.Z-p.Z)
 }
 
 // DistanceTo returns how far the bot is from an entity, in blocks.

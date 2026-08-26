@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/blocktopia/understudy-client/internal/geom"
 	"github.com/blocktopia/understudy-client/protocol"
 )
 
@@ -132,7 +133,7 @@ func (c *Client) LookYawPitch(yaw, pitch *float32) error {
 // LookAt points the bot at an exact world coordinate.
 func (c *Client) LookAt(x, y, z float64) error {
 	eyeX, eyeY, eyeZ := c.eyes()
-	yaw, pitch := yawPitchTowards(eyeX, eyeY, eyeZ, x, y, z)
+	yaw, pitch := geom.YawPitchTowards(eyeX, eyeY, eyeZ, x, y, z)
 	return c.Look(yaw, pitch)
 }
 
@@ -142,7 +143,8 @@ func (c *Client) LookAt(x, y, z float64) error {
 // seam between four blocks and the ray can land on a neighbour. The classic
 // symptom is a mining loop that stalls one block short of its target.
 func (c *Client) LookAtBlock(x, y, z int32) error {
-	return c.LookAt(blockCentre(x, y, z))
+	cx, cy, cz := geom.BlockCentre(x, y, z)
+	return c.LookAt(cx, cy, cz)
 }
 
 // LookAtEntity faces a tracked entity, aiming at roughly body height rather

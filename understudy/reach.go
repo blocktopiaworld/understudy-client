@@ -2,8 +2,8 @@ package understudy
 
 import (
 	"fmt"
-	"math"
 
+	"github.com/blocktopia/understudy-client/internal/geom"
 	"github.com/blocktopia/understudy-client/protocol"
 )
 
@@ -27,16 +27,8 @@ const AttackReach = 3.0
 // of a block, which is the measure the server actually enforces.
 func (c *Client) BlockDistance(x, y, z int32) float64 {
 	eyeX, eyeY, eyeZ := c.eyes()
-	// Clamp the eye position into the block's box; the leftover offset is the
-	// shortest distance to it.
-	return length(
-		eyeX-clamp(eyeX, float64(x), float64(x)+1),
-		eyeY-clamp(eyeY, float64(y), float64(y)+1),
-		eyeZ-clamp(eyeZ, float64(z), float64(z)+1),
-	)
+	return geom.BlockDistance(eyeX, eyeY, eyeZ, x, y, z)
 }
-
-func clamp(v, lo, hi float64) float64 { return math.Max(lo, math.Min(v, hi)) }
 
 // CanReachBlock reports whether a block is within interaction range.
 func (c *Client) CanReachBlock(x, y, z int32) bool {

@@ -3,10 +3,9 @@ package understudy
 import (
 	"context"
 	"fmt"
-	"math"
 	"time"
 
-	"github.com/blocktopia/understudy-client/protocol"
+	"github.com/blocktopia/understudy-client/internal/geom"
 )
 
 // RayHit is a block the crosshair landed on.
@@ -19,105 +18,32 @@ type RayHit struct {
 	State    int32   `json:"state"`
 }
 
-// LookDirection converts a yaw/pitch in degrees to a unit direction vector,
-// in Minecraft's convention: yaw 0 faces +Z, and a negative pitch looks up.
-func LookDirection(yaw, pitch float32) (dx, dy, dz float64) {
-	y := float64(yaw) * math.Pi / 180
-	p := float64(pitch) * math.Pi / 180
-	return -math.Sin(y) * math.Cos(p), -math.Sin(p), math.Cos(y) * math.Cos(p)
-}
-
 // RayTrace walks the voxel grid from a point along a direction and returns the
 // first targetable block within maxDist.
 //
-// This is how the game itself decides what you are pointing at, and modelling
-// it matters more than it looks: a straight-line distance check says a block
-// four metres away is reachable, but if anything is in between then the
-// crosshair is on *that* block, and what a player would actually mine is not
-// the one the caller named.
-//
-// Uses grid traversal rather than fixed-size sampling steps: stepping by a
-// fraction of a block can tunnel through a corner and miss a face, whereas
-// advancing to the next boundary visits every voxel the ray truly crosses.
+// The traversal itself is geom.Raycast; what this adds is the only thing that
+// needs a client — deciding whether a voxel stops the ray, which depends on
+// terrain the bot has been sent and on the version's block tables.
 //
 // The whole walk runs under a single terrain lock, so it cannot observe a
 // half-applied block update partway along the ray.
 func (c *Client) RayTrace(ox, oy, oz, dx, dy, dz, maxDist float64) (RayHit, bool) {
-	// Current voxel.
-	x, y, z := blockPos(ox, oy, oz)
-
-	stepX, stepY, stepZ := axisStep(dx), axisStep(dy), axisStep(dz)
-
-	// Distance along the ray to the next boundary on each axis, and the
-	// distance between successive boundaries.
-	tMaxX := safeDiv(boundary(ox, x, stepX), dx)
-	tMaxY := safeDiv(boundary(oy, y, stepY), dy)
-	tMaxZ := safeDiv(boundary(oz, z, stepZ), dz)
-	tDeltaX, tDeltaY, tDeltaZ := safeDiv(1, dx), safeDiv(1, dy), safeDiv(1, dz)
-
 	var hit RayHit
 	found := false
 	c.world.scan(func(at func(x, y, z int32) int32) {
-		dist := 0.0
-		face := protocol.FaceTop
-		for dist <= maxDist {
-			if state := at(x, y, z); c.v.IsTargetable(state) {
-				hit = RayHit{X: x, Y: y, Z: z, Face: face, Distance: dist, State: state}
-				found = true
-				return
-			}
-			// Advance along whichever axis reaches its next boundary first, and
-			// remember which face we entered the new voxel through.
-			switch {
-			case tMaxX <= tMaxY && tMaxX <= tMaxZ:
-				dist, x, tMaxX = tMaxX, x+stepX, tMaxX+tDeltaX
-				face = faceForStep(stepX, protocol.FaceEast, protocol.FaceWest)
-			case tMaxY <= tMaxZ:
-				dist, y, tMaxY = tMaxY, y+stepY, tMaxY+tDeltaY
-				face = faceForStep(stepY, protocol.FaceTop, protocol.FaceBottom)
-			default:
-				dist, z, tMaxZ = tMaxZ, z+stepZ, tMaxZ+tDeltaZ
-				face = faceForStep(stepZ, protocol.FaceSouth, protocol.FaceNorth)
-			}
+		h, ok := geom.Raycast(ox, oy, oz, dx, dy, dz, maxDist,
+			func(x, y, z int32) bool { return c.v.IsTargetable(at(x, y, z)) })
+		if !ok {
+			return
 		}
+		hit = RayHit{
+			X: h.X, Y: h.Y, Z: h.Z,
+			Face: h.Face, Distance: h.Distance,
+			State: at(h.X, h.Y, h.Z),
+		}
+		found = true
 	})
 	return hit, found
-}
-
-// axisStep is the direction of travel along one axis. A zero component steps
-// negative, which is harmless: safeDiv gives that axis an infinite boundary
-// distance, so it is never the axis chosen to advance.
-func axisStep(d float64) int32 {
-	if d > 0 {
-		return 1
-	}
-	return -1
-}
-
-// boundary is the distance from origin to the next voxel edge along an axis.
-func boundary(origin float64, voxel, step int32) float64 {
-	if step > 0 {
-		return float64(voxel+1) - origin
-	}
-	return origin - float64(voxel)
-}
-
-// safeDiv divides by an axis component's magnitude, treating a zero component
-// as infinitely far — a ray parallel to an axis never crosses its boundaries.
-func safeDiv(n, d float64) float64 {
-	if d == 0 {
-		return math.Inf(1)
-	}
-	return n / math.Abs(d)
-}
-
-// faceForStep picks the face a ray entered through: moving in +X enters the
-// west face, so the sides are swapped relative to the direction of travel.
-func faceForStep(step, positiveSide, negativeSide int32) int32 {
-	if step > 0 {
-		return negativeSide
-	}
-	return positiveSide
 }
 
 // LookingAt returns the block the bot's crosshair is currently on, if any is
@@ -176,9 +102,9 @@ func (c *Client) LineOfSightTo(x, y, z int32) (RayHit, sight) {
 	}
 	eyeX, eyeY, eyeZ := c.eyes()
 	// Aim at the block's centre, as LookAtBlock would.
-	tx, ty, tz := blockCentre(x, y, z)
+	tx, ty, tz := geom.BlockCentre(x, y, z)
 	dx, dy, dz := tx-eyeX, ty-eyeY, tz-eyeZ
-	dist := length(dx, dy, dz)
+	dist := geom.Length(dx, dy, dz)
 	if dist == 0 {
 		return RayHit{}, sightEmpty
 	}

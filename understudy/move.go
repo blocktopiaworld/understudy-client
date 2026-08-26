@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/blocktopia/understudy-client/internal/geom"
 	"github.com/blocktopia/understudy-client/protocol"
 )
 
@@ -86,7 +87,7 @@ func (c *Client) WalkTo(ctx context.Context, x, y, z float64) error {
 	for {
 		pos := c.Position()
 		dx, dy, dz := x-pos.X, y-pos.Y, z-pos.Z
-		dist := length(dx, dy, dz)
+		dist := geom.Length(dx, dy, dz)
 		if dist <= step {
 			return c.MoveTo(x, y, z)
 		}

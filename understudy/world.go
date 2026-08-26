@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/blocktopia/understudy-client/internal/geom"
 	"github.com/blocktopia/understudy-client/protocol"
 )
 
@@ -184,7 +185,7 @@ func (c *Client) FindGround(x, y, z int32) Support {
 // GroundBelow finds what the bot is currently standing over.
 func (c *Client) GroundBelow() Support {
 	pos := c.Position()
-	x, y, z := blockPos(pos.X, pos.Y, pos.Z)
+	x, y, z := geom.BlockPos(pos.X, pos.Y, pos.Z)
 	// Start the scan one below the feet — the block the bot occupies is the
 	// one it is standing *in*, not standing on.
 	return c.FindGround(x, y-1, z)
@@ -195,7 +196,7 @@ func (c *Client) GroundBelow() Support {
 func (c *Client) Submerged() bool {
 	pos := c.Position()
 	// The head block sits one above the feet.
-	x, head, z := blockPos(pos.X, pos.Y+1.0, pos.Z)
+	x, head, z := geom.BlockPos(pos.X, pos.Y+1.0, pos.Z)
 	return c.v.IsWater(c.world.blockState(x, head, z))
 }
 
@@ -203,7 +204,7 @@ func (c *Client) Submerged() bool {
 // scanning up from its current position. Returns false if no surface is found.
 func (c *Client) WaterSurfaceAbove() (surfaceY float64, found bool) {
 	pos := c.Position()
-	x, start, z := blockPos(pos.X, pos.Y, pos.Z)
+	x, start, z := geom.BlockPos(pos.X, pos.Y, pos.Z)
 	c.world.scan(func(at func(x, y, z int32) int32) {
 		for probe := start; probe < start+maxGroundSearch; probe++ {
 			if !c.v.IsWater(at(x, probe+1, z)) {
@@ -240,7 +241,7 @@ func (c *Client) waitForChunk(ctx context.Context, timeout time.Duration) bool {
 	// Re-read the position each time: the bot may still be being moved.
 	loaded := func() bool {
 		pos := c.Position()
-		x, _, z := blockPos(pos.X, pos.Y, pos.Z)
+		x, _, z := geom.BlockPos(pos.X, pos.Y, pos.Z)
 		return c.world.hasChunk(x, z)
 	}
 	if loaded() {

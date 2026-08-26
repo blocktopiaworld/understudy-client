@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	understudy "github.com/blocktopia/understudy-client"
 	"github.com/blocktopia/understudy-client/protocol"
+	"github.com/blocktopia/understudy-client/understudy"
 )
 
 // Bot is the slice of a client the control API drives.

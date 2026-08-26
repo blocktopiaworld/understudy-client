@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/blocktopia/understudy-client/internal/nbt"
 	"github.com/blocktopia/understudy-client/protocol"
 )
 
@@ -399,7 +400,7 @@ func (c *Client) handleSessionPacket(ctx context.Context, p protocol.Packet) (bo
 		// length-prefixed string. Reading it as one prints binary noise on the
 		// single most important failure path, so pull the readable parts out
 		// instead of pretending to decode NBT.
-		return true, fmt.Errorf("understudy: kicked: %s", readableText(p.Data))
+		return true, fmt.Errorf("understudy: kicked: %s", nbt.ReadableText(p.Data))
 	}
 	return false, nil
 }
