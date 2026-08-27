@@ -3,6 +3,7 @@ package understudy
 import (
 	"fmt"
 
+	"github.com/blocktopia/understudy-client/internal/nbt"
 	"github.com/blocktopia/understudy-client/protocol"
 )
 
@@ -32,9 +33,13 @@ import (
 
 // Component type ids, as observed on 26.1.
 const (
-	componentMapID          = 46
-	componentPotionContents = 51
-	componentStewEffects    = 53
+	componentDamage             = 3
+	componentCustomName         = 6
+	componentEnchantments       = 13
+	componentStoredEnchantments = 42
+	componentMapID              = 46
+	componentPotionContents     = 51
+	componentStewEffects        = 53
 )
 
 // skipComponent steps over one data component's payload.
@@ -45,20 +50,38 @@ func skipComponent(v *protocol.Version, r *protocol.Reader, kind int32, into *It
 	switch kind {
 	case componentPotionContents:
 		return skipPotionContents(r, into)
+	case componentDamage:
+		// A single VarInt. Confirmed with two picks damaged 37 and 1000, which
+		// encode one byte and two — the case a single sample cannot show.
+		//
+		// This is the component that matters most: any tool that has been used
+		// carries it, so before this was handled a bot went blind to its own
+		// inventory the moment it mined anything.
+		r.VarInt()
+		return r.Err()
+	case componentCustomName:
+		// A nameless NBT tag — the same text component a window title carries,
+		// so the existing walker steps over it.
+		n, err := nbt.SkipTag(r.Remaining())
+		if err != nil {
+			return fmt.Errorf("custom name: %w", err)
+		}
+		r.Skip(n)
+		return r.Err()
 	case componentMapID:
 		// A single VarInt. Confirmed with two maps whose ids were chosen: they
 		// decoded as 7 and 9 and sat exactly seven bytes apart.
 		r.VarInt()
 		return r.Err()
-	case componentStewEffects:
-		// A count, then a pair of VarInts per effect. Confirmed against the
-		// vanilla recipe book, where suspicious stew is the only entry
-		// carrying a component at all.
-		for range r.VarInt() {
-			r.VarInt() // effect id
-			r.VarInt() // duration
-		}
-		return r.Err()
+	case componentEnchantments, componentStoredEnchantments, componentStewEffects:
+		// All three are the same shape: a count, then that many pairs of
+		// VarInts. Enchantments are id and level, a stew's effects are id and
+		// duration.
+		//
+		// Confirmed with a sword carrying one enchantment and another carrying
+		// three, which is what shows the count is real rather than a fixed
+		// width that happened to fit.
+		return skipVarIntPairs(r)
 	default:
 		return fmt.Errorf("data component %d has no known encoding", kind)
 	}
@@ -110,6 +133,18 @@ func skipPotionContents(r *protocol.Reader, into *ItemStack) error {
 	}
 	if n := r.VarInt(); n != 0 {
 		return fmt.Errorf("potion carries %d effects to apply, which cannot be skipped", n)
+	}
+	return r.Err()
+}
+
+// skipVarIntPairs steps over a count followed by that many pairs of VarInts.
+//
+// Shared because three separate components turn out to use it — enchantments,
+// an enchanted book's stored enchantments, and a suspicious stew's effects.
+func skipVarIntPairs(r *protocol.Reader) error {
+	for range r.VarInt() {
+		r.VarInt()
+		r.VarInt()
 	}
 	return r.Err()
 }

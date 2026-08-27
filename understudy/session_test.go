@@ -310,12 +310,19 @@ func TestBlockActionsWaitForTheTeleportToSettle(t *testing.T) {
 	// It still waits — the server needs a tick to act on that position — but a
 	// tick, not the whole window. Sleeping the window out cost 346ms a time
 	// across eleven repositions per field, which is what made this worth fixing.
+	//
+	// The bound here is deliberately loose. An earlier version asserted the
+	// elapsed time was under half the settle window, which held in isolation
+	// and failed under the load of the whole suite running with -race — a
+	// timing assertion measuring the machine rather than the code. What
+	// actually distinguishes the fix from the bug is the position packet
+	// above: sleeping the window out sends nothing.
 	if elapsed < TickRate/2 {
 		t.Errorf("StartDig returned after %v, want it to give the server ~%v to act", elapsed, TickRate)
 	}
-	if elapsed > TeleportSettle/2 {
-		t.Errorf("StartDig took %v, want roughly one %v tick — not the %v window",
-			elapsed, TickRate, TeleportSettle)
+	if elapsed > 4*TeleportSettle {
+		t.Errorf("StartDig took %v, which is far past even the old %v window",
+			elapsed, TeleportSettle)
 	}
 
 	// A second action costs nothing: the server has our position already.
@@ -323,7 +330,9 @@ func TestBlockActionsWaitForTheTeleportToSettle(t *testing.T) {
 	if err := c.StartDig(context.Background(), 0, 63, 0, 1); err != nil {
 		t.Fatalf("second StartDig: %v", err)
 	}
-	if elapsed := time.Since(start); elapsed > 10*time.Millisecond {
+	// Generous for the same reason: what matters is that it does not wait
+	// again, not the exact microseconds under a race detector.
+	if elapsed := time.Since(start); elapsed > TickRate {
 		t.Errorf("the second StartDig took %v, want ~0 — the server is already answered", elapsed)
 	}
 }
