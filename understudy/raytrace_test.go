@@ -94,13 +94,31 @@ func TestLineOfSightStates(t *testing.T) {
 		wantErrContaining(t, s.err("break", 3, 1, 0, hit), "blocked sight", "in the way")
 	})
 
-	t.Run("nothing there at all", func(t *testing.T) {
+	t.Run("nothing at the target", func(t *testing.T) {
 		c := setup(t)
 		_, s := c.LineOfSightTo(3, 1, 0)
-		if s != sightEmpty {
-			t.Errorf("sight = %v, want sightEmpty", s)
+		// Not sightEmpty: the ray never runs. Asking to dig a block the client
+		// has not been told about used to trace straight through the empty
+		// target and blame whatever lay beyond — on a real server, the floor
+		// two blocks past it, reported as "in the way" from further away than
+		// the target itself.
+		if s != sightNoTarget {
+			t.Errorf("sight = %v, want sightNoTarget", s)
 		}
-		wantErrContaining(t, s.err("break", 3, 1, 0, RayHit{}), "empty sight", "nothing solid")
+		wantErrContaining(t, s.err("break", 3, 1, 0, RayHit{}), "absent target",
+			"nothing there")
+	})
+
+	t.Run("target exists but is out of reach", func(t *testing.T) {
+		c := setup(t)
+		// Beyond the crosshair range but still inside the loaded chunk, or the
+		// unloaded-terrain rule would answer first.
+		far := int32(15)
+		c.world.SetBlockState(far, 1, 0, stateStone)
+		_, s := c.LineOfSightTo(far, 1, 0)
+		if s != sightEmpty {
+			t.Errorf("sight = %v, want sightEmpty for a real block beyond reach", s)
+		}
 	})
 
 	// Unloaded terrain reads as air everywhere, which would wrongly look like a

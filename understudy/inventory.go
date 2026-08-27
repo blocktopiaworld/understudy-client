@@ -366,6 +366,12 @@ func (c *Client) handleWindowItems(p protocol.Packet) error {
 	}
 	if toContainer {
 		c.window.ReplaceAll(items, int(n), truncated)
+		// The window's player rows are the player's inventory; see
+		// mirrorToInventory. A window_items carries all of them at once, which
+		// is the moment the two views would otherwise diverge furthest.
+		for _, item := range items {
+			c.mirrorToInventory(item.Slot, item)
+		}
 		return nil
 	}
 	c.inv.ReplaceAll(items, truncated)
@@ -397,10 +403,38 @@ func (c *Client) handleSetSlot(p protocol.Packet) error {
 	item.Slot = int(slot)
 	if toContainer {
 		c.window.SetSlot(int(slot), item)
+		c.mirrorToInventory(int(slot), item)
 		return nil
 	}
 	c.inv.SetSlot(int(slot), item)
 	return nil
+}
+
+// mirrorToInventory copies a container-window slot into the player's own
+// inventory when it addresses one of the player's rows.
+//
+// A container window is [the container's own slots][the player's 36], and that
+// second half is not a copy of the player's inventory — it *is* the player's
+// inventory, addressed differently. Updating only the window left the client's
+// own view stale for as long as anything was open, and the staleness outlived
+// the window: craft at a table, take the result, close, and the bot still
+// believed it held the logs it had spent.
+//
+// The server is not at fault and does not resend. It already said what changed,
+// through the window, and a client that files that under "container" and not
+// under "mine" has simply lost it.
+func (c *Client) mirrorToInventory(slot int, item ItemStack) {
+	own := c.ContainerOwnSlots()
+	if own <= 0 || slot < own {
+		return
+	}
+	row := slot - own
+	if row >= PlayerWindowSlots {
+		return // the carried slot, which belongs to neither
+	}
+	mine := SlotMainStart + row
+	item.Slot = mine
+	c.inv.SetSlot(mine, item)
 }
 
 func (c *Client) handleCollect(p protocol.Packet) error {

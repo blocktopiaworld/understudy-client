@@ -71,6 +71,11 @@ const (
 	sightBlocked
 	// sightEmpty means the ray hit nothing at all within reach.
 	sightEmpty
+	// sightNoTarget means the caller named a block the client does not have.
+	// The chunk is loaded and that position reads as air, so the ray passes
+	// straight through and reports whatever it meets beyond — which blames a
+	// bystander for the caller's real problem.
+	sightNoTarget
 )
 
 // err renders a sight as an actionable error, or nil when the path is clear.
@@ -81,6 +86,10 @@ func (s sight) err(action string, x, y, z int32, hit RayHit) error {
 	case sightEmpty:
 		return fmt.Errorf("understudy: cannot %s block at %d,%d,%d — nothing solid along the line of sight",
 			action, x, y, z)
+	case sightNoTarget:
+		return fmt.Errorf("understudy: cannot %s block at %d,%d,%d — there is nothing there "+
+			"as far as this client has been told; if it was just placed, the update may not "+
+			"have arrived yet", action, x, y, z)
 	default:
 		return fmt.Errorf("understudy: cannot %s block at %d,%d,%d — %d,%d,%d is in the way (%.2f blocks along)",
 			action, x, y, z, hit.X, hit.Y, hit.Z, hit.Distance)
@@ -99,6 +108,17 @@ func (s sight) err(action string, x, y, z int32, hit RayHit) error {
 func (c *Client) LineOfSightTo(x, y, z int32) (RayHit, sight) {
 	if !c.ChunkLoaded(x, z) {
 		return RayHit{}, sightClear
+	}
+	// Before tracing, check the target exists — by the same test the ray itself
+	// uses, so the two cannot disagree about what counts as a block.
+	//
+	// A block the client has not been
+	// told about reads as air, so the ray goes straight through it and reports
+	// the next thing it meets — which is how digging a block placed a moment
+	// earlier came back as "the floor beyond it is in the way, 2.17 blocks
+	// along", naming a bystander further away than the target itself.
+	if !c.v.IsTargetable(c.world.BlockState(x, y, z)) {
+		return RayHit{}, sightNoTarget
 	}
 	eyeX, eyeY, eyeZ := c.eyes()
 	// Aim at the block's centre, as LookAtBlock would.

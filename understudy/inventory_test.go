@@ -301,3 +301,58 @@ func TestHandleHeldItemSlot(t *testing.T) {
 		t.Errorf("HeldSlot() = %d after an out-of-range update, want it unchanged at 4", got)
 	}
 }
+
+// A container window's player rows are the player's inventory, addressed
+// differently — not a copy of it.
+//
+// Treating them as separate left the client's own view stale for as long as
+// anything was open, and the staleness outlived the window: craft at a table,
+// take the result, close, and the bot still believed it held the logs it had
+// spent. Measured against a real server, which reported oak_planks the client
+// never saw.
+func TestContainerRowsUpdateThePlayersInventory(t *testing.T) {
+	c := newTestClient(t)
+	// A crafting table: 10 of its own, then the player's 36.
+	c.window.Open(1, int32(WindowCrafting), "Crafting")
+	slots := make([]ItemStack, 46)
+	for i := range slots {
+		slots[i] = ItemStack{Slot: i}
+	}
+	c.window.ReplaceAll(slots, len(slots), false)
+
+	// The first of the player's rows in this window is slot 10, which is slot 9
+	// of the player's own inventory.
+	c.mirrorToInventory(10, ItemStack{Name: "minecraft:oak_planks", Count: 4})
+	item, ok := c.inv.Slot(SlotMainStart)
+	if !ok || item.Name != "minecraft:oak_planks" || item.Count != 4 {
+		t.Errorf("player slot %d = %+v, want the planks the window reported",
+			SlotMainStart, item)
+	}
+	if item.Slot != SlotMainStart {
+		t.Errorf("slot number came across as %d, want it renumbered to %d",
+			item.Slot, SlotMainStart)
+	}
+}
+
+// The container's own slots are not the player's and must not leak into it.
+func TestContainerOwnSlotsDoNotTouchTheInventory(t *testing.T) {
+	c := newTestClient(t)
+	c.window.Open(1, int32(WindowCrafting), "Crafting")
+	slots := make([]ItemStack, 46)
+	for i := range slots {
+		slots[i] = ItemStack{Slot: i}
+	}
+	c.window.ReplaceAll(slots, len(slots), false)
+
+	// Slot 0 is the crafting result, which belongs to the table, not the bot.
+	c.mirrorToInventory(0, ItemStack{Name: "minecraft:diamond", Count: 64})
+	// And slot 46 would be the carried item, which belongs to neither.
+	c.mirrorToInventory(46, ItemStack{Name: "minecraft:diamond", Count: 64})
+
+	for slot := range 45 {
+		if item, ok := c.inv.Slot(slot); ok && item.Name != "" {
+			t.Errorf("a container-owned slot reached the player's inventory at %d: %+v",
+				slot, item)
+		}
+	}
+}
