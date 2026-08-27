@@ -121,6 +121,7 @@ type Bot interface {
 	CraftRecipeFor(ctx context.Context, name string, all bool) error
 	RecipeFor(name string) (understudy.RecipeID, bool)
 	KnownRecipes() int
+	MissingRecipes() int
 	SelectTrade(index int32) error
 	Trade(ctx context.Context, index int32) (understudy.ItemStack, error)
 	TradeAndTake(ctx context.Context, index int32, times int) (int, error)

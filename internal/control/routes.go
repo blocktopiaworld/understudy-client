@@ -1060,14 +1060,21 @@ func (s *Server) handleTrades(w http.ResponseWriter, _ *http.Request) {
 // handleRecipes reports what the server's recipe book taught us. ?item= looks
 // one up by what it produces.
 func (s *Server) handleRecipes(w http.ResponseWriter, r *http.Request) {
+	// missing is the number of entries the server sent that could not be
+	// decoded. Without it a caller cannot tell "no recipe for that" from "that
+	// recipe never decoded" — they read identically, and on a version whose
+	// book is only partly understood the second is the common case.
 	if name := r.URL.Query().Get("item"); name != "" {
 		id, ok := s.bot.RecipeFor(name)
 		s.writeJSON(w, http.StatusOK, body{
-			"item": name, "found": ok, "recipe": id, "known": s.bot.KnownRecipes(),
+			"item": name, "found": ok, "recipe": id,
+			"known": s.bot.KnownRecipes(), "missing": s.bot.MissingRecipes(),
 		})
 		return
 	}
-	s.writeJSON(w, http.StatusOK, body{"known": s.bot.KnownRecipes()})
+	s.writeJSON(w, http.StatusOK, body{
+		"known": s.bot.KnownRecipes(), "missing": s.bot.MissingRecipes(),
+	})
 }
 
 func (s *Server) beacon(ctx context.Context, in struct {

@@ -16,6 +16,7 @@ import (
 // that it answers without a server, which is what makes the argument parsing,
 // the defaulting and the response shapes testable at all.
 type stubBot struct {
+	missingRecipes int
 	// what the handlers see
 	pos           understudy.Position
 	health        float32
@@ -609,6 +610,8 @@ func (b *stubBot) ActivateBeacon(ctx context.Context, payment string, primary, s
 	b.lastButton = primary
 	return b.err
 }
+
+func (b *stubBot) MissingRecipes() int { return b.missingRecipes }
 
 func (b *stubBot) ApplyToMap(ctx context.Context, mapItem, applied string) (understudy.ItemStack, error) {
 	b.record("ApplyToMap")
