@@ -1,0 +1,23 @@
+name: Version support
+description: Ask for a Minecraft version, or report one decoding wrongly.
+labels: [version]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Adding a version is mostly generator runs, but not entirely: payload
+        encodings are measured against a running server, and they genuinely
+        differ — 1.21.4 and 1.21.11 disagree with each other as much as either
+        does with 26.1. See protocol/versions/doc.go.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: "26.3"
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything already known
+      description: If you have run the server with --reports, or seen which components fail to decode, say so — that is most of the work.

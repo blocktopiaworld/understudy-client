@@ -8,6 +8,9 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  schedule:
+    # Weekly, so the fuzzers keep searching without slowing anyone's pull request.
+    - cron: "17 4 * * 1"
 
 permissions:
   contents: read
@@ -61,3 +64,31 @@ jobs:
           go-version-file: go.mod
       - name: the version tables compile and register
         run: go test ./protocol/... -run Version -count=1
+
+  # The seed corpus runs as part of `make race` — a fuzz target is an ordinary
+  # test until you pass -fuzz. This job goes looking for new inputs, which is
+  # worth doing on a schedule rather than on every push: the two defects it has
+  # found so far (unbounded recursion, unbounded list lengths) both took more
+  # than a few seconds of searching.
+  fuzz:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - { pkg: ./internal/nbt, name: FuzzSkipTag }
+          - { pkg: ./understudy, name: FuzzSkipComponent }
+          - { pkg: ./understudy, name: FuzzReadSlot }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test ${{ matrix.target.pkg }} -fuzz ${{ matrix.target.name }} -fuzztime 5m
+      - name: keep whatever it found
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-${{ matrix.target.name }}
+          path: "**/testdata/fuzz/**"

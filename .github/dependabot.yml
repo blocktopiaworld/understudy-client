@@ -1,0 +1,8 @@
+# Only the Actions are versioned here — the Go module has no dependencies, so
+# there is nothing for the gomod ecosystem to update.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

@@ -1,0 +1,31 @@
+name: Bug report
+description: Something the client does wrong against a real server.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The two things that make a protocol bug fixable are the server it
+        happened against and what the *server* saw. "The client said it worked"
+        is the failure mode, not the evidence.
+  - type: input
+    id: server
+    attributes:
+      label: Server
+      description: Implementation and version, e.g. "Paper 26.2-119", "Fabric 26.1.2", "vanilla 1.21.11".
+      placeholder: Paper 26.2-119
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you asked the client to do, and what the server's own view says instead — via RCON, /data get, or the server log.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Client output with -debug
+      description: Run with -debug and paste the relevant lines. A decode that stopped early says so there and nowhere else.
+      render: text
