@@ -43,6 +43,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle("POST /sneak", handle(s, s.sneak))
 	mux.Handle("POST /equip", handle(s, s.equip))
 	mux.Handle("POST /interact", handle(s, s.interact))
+	mux.Handle("POST /interactat", handle(s, s.interactAt))
 	mux.Handle("POST /consume", handle(s, s.consume))
 	mux.Handle("POST /shoot", handle(s, s.shoot))
 	mux.Handle("POST /craft", handle(s, s.craft))
@@ -55,6 +56,7 @@ func (s *Server) routes() *http.ServeMux {
 
 	// Container UIs: crafting tables, smithing tables, stonecutters, villagers.
 	mux.HandleFunc("GET /container", s.handleContainer)
+	mux.HandleFunc("GET /trades", s.handleTrades)
 	mux.Handle("POST /container/open", handle(s, s.containerOpen))
 	mux.Handle("POST /container/close", handle(s, s.containerClose))
 	mux.Handle("POST /container/click", handle(s, s.containerClick))
@@ -755,14 +757,24 @@ func (s *Server) containerCraft(_ context.Context, in struct {
 }
 
 func (s *Server) containerTrade(ctx context.Context, in struct {
-	Index int32 `json:"index"`
-	Times int   `json:"times"`
+	Index int32  `json:"index"`
+	Item  string `json:"item"`
+	Times int    `json:"times"`
 	// Raw skips the confirmation, for a caller that wants to select a trade
 	// and inspect the window itself.
 	Raw bool `json:"raw"`
 }) (body, error) {
 	if in.Raw {
 		return nil, s.bot.SelectTrade(in.Index)
+	}
+	// Selecting by what the trade produces survives a villager whose offers are
+	// in a different order, which selecting by index does not.
+	if in.Item != "" {
+		done, err := s.bot.TradeForItem(ctx, in.Item, in.Times)
+		if err != nil {
+			return nil, err
+		}
+		return body{"traded": done, "requested": max(in.Times, 1), "item": in.Item}, nil
 	}
 	if in.Times > 1 {
 		done, err := s.bot.TradeAndTake(ctx, in.Index, in.Times)
@@ -968,4 +980,49 @@ func (s *Server) brew(ctx context.Context, in struct {
 		in.Fuel = "minecraft:blaze_powder"
 	}
 	return nil, s.bot.Brew(ctx, in.Bottle, in.Ingredient, in.Fuel, in.Count)
+}
+
+// interactAt right-clicks a specific point on an entity. Where you click
+// matters for multi-part entities — a chest boat's chest and seat are separate
+// hitboxes, and only one of them opens the chest.
+func (s *Server) interactAt(_ context.Context, in struct {
+	EntityID int32   `json:"entity_id"`
+	Type     string  `json:"type"`
+	DX       float64 `json:"dx"`
+	DY       float64 `json:"dy"`
+	DZ       float64 `json:"dz"`
+}) (body, error) {
+	id := in.EntityID
+	if in.Type != "" {
+		target, err := s.bot.NearestEntity(in.Type)
+		if err != nil {
+			return nil, err
+		}
+		id = target.ID
+	}
+	if err := s.bot.InteractAt(id, in.DX, in.DY, in.DZ); err != nil {
+		return nil, err
+	}
+	return body{"entity_id": id, "dx": in.DX, "dy": in.DY, "dz": in.DZ}, nil
+}
+
+// handleTrades lists a merchant's offers, including the ones that are spent —
+// a caller testing lockout needs to see them, not have them filtered away.
+func (s *Server) handleTrades(w http.ResponseWriter, _ *http.Request) {
+	offers := s.bot.Trades()
+	out := make([]body, 0, len(offers))
+	for _, t := range offers {
+		row := body{
+			"index": t.Index, "output": t.Output.Name, "count": t.Output.Count,
+			"input": t.Input.Name, "input_count": t.Input.Count,
+			"uses": t.Uses, "max_uses": t.MaxUses,
+			"available": t.Available(), "disabled": t.Disabled, "xp": t.XP,
+		}
+		if !t.Input2.Empty() {
+			row["input2"] = t.Input2.Name
+			row["input2_count"] = t.Input2.Count
+		}
+		out = append(out, row)
+	}
+	s.writeJSON(w, http.StatusOK, body{"count": len(out), "trades": out})
 }

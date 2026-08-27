@@ -82,6 +82,7 @@ func v1_21_4() *protocol.Version {
 			CBPlaySetSlot:               21,
 			CBPlayOpenWindow:            53,
 			CBPlayCloseWindow:           18,
+			CBPlayTradeList:             46,
 			CBPlayHeldItemSlot:          99,
 			CBPlayCollect:               118,
 			CBPlayChunkBatchStart:       13,

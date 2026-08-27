@@ -120,11 +120,64 @@ func (c *Client) InteractEntity(entityID int32) error {
 	if c.v.Packets.SBPlayUseEntity == protocol.Absent {
 		return fmt.Errorf("understudy: %s has no use_entity packet", c.v.Name)
 	}
+	return c.interactAt(entityID, nil)
+}
+
+// InteractAt right-clicks a specific point on an entity, relative to its own
+// position.
+//
+// Where you click usually does not matter — a villager opens its trades
+// wherever it is poked. It matters for entities whose parts do different
+// things: a chest boat carries the chest and the seat in separate hitboxes, so
+// aiming at the middle boards it and only the rear opens the chest.
+//
+// The offset is in blocks from the entity's position, in world axes.
+func (c *Client) InteractAt(entityID int32, dx, dy, dz float64) error {
+	if err := c.requireAlive("interact"); err != nil {
+		return err
+	}
+	return c.interactAt(entityID, &[3]float64{dx, dy, dz})
+}
+
+// interactAt sends use_entity with the point on the entity that was hit.
+//
+// # The location field
+//
+// minecraft-data calls it an "lpVec3" and does not describe it. It is three
+// half-precision floats — six bytes, always present, no presence prefix. That
+// was not a guess: sending a prefix byte and three full floats made the server
+// answer
+//
+//	ServerboundInteractPacket was larger than I expected, found 7 bytes extra
+//
+// which puts the whole field at six bytes plus the trailing bool. "lp" is low
+// precision, and half a float is plenty for telling one end of a boat from the
+// other.
+//
+// A zero vector means "the middle", which is what an ordinary right-click on an
+// ordinary entity amounts to.
+func (c *Client) interactAt(entityID int32, at *[3]float64) error {
+	if c.v.Packets.SBPlayUseEntity == protocol.Absent {
+		return fmt.Errorf("understudy: %s has no use_entity packet", c.v.Name)
+	}
+	var x, y, z float64
+	if at != nil {
+		x, y, z = at[0], at[1], at[2]
+	}
 	w := protocol.NewWriter(c.v.Packets.SBPlayUseEntity).
 		VarInt(entityID).
-		VarInt(protocol.MainHand).
-		U8(0). // lpVec3 zero vector: a leading zero byte encodes {0,0,0}
-		Bool(false)
+		VarInt(protocol.MainHand)
+	if at == nil {
+		// Absent: a zero prefix, then the sneaking flag. Measured — this is
+		// what an ordinary right-click sends and what every single-part entity
+		// needs.
+		w.U8(0).Bool(false)
+	} else {
+		// Present: the prefix, then three half-floats. No trailing flag — the
+		// server reported "1 byte extra" when one was sent, which is how the
+		// shape of this field was established at all.
+		w.U8(1).F16(float32(x)).F16(float32(y)).F16(float32(z))
+	}
 	if err := c.conn.WritePacket(w.Bytes()); err != nil {
 		return err
 	}

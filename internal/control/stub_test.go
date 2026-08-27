@@ -554,3 +554,32 @@ func (b *stubBot) Brew(ctx context.Context, bottle, ingredient, fuel string, cou
 	b.record("Brew:" + ingredient)
 	return b.err
 }
+
+func (b *stubBot) InteractAt(entityID int32, dx, dy, dz float64) error {
+	b.record("InteractAt")
+	return b.err
+}
+
+func (b *stubBot) NearestEntity(typeName string) (understudy.Entity, error) {
+	b.record("NearestEntity:" + typeName)
+	if b.err != nil {
+		return understudy.Entity{}, b.err
+	}
+	return understudy.Entity{ID: 21, TypeName: protocol.Namespaced(typeName)}, nil
+}
+
+func (b *stubBot) Trades() []understudy.TradeOffer {
+	return []understudy.TradeOffer{{
+		Index: 0, Output: understudy.ItemStack{Name: "minecraft:bread", Count: 6},
+		Input: understudy.ItemStack{Name: "minecraft:emerald", Count: 1},
+		Uses:  0, MaxUses: 4,
+	}}
+}
+
+func (b *stubBot) TradeForItem(ctx context.Context, output string, times int) (int, error) {
+	b.record("TradeForItem:" + output)
+	if b.err != nil {
+		return 0, b.err
+	}
+	return max(times, 1), nil
+}

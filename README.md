@@ -118,10 +118,25 @@ curl -X POST localhost:8181/container/grid -d '{"layout":{"1":"white_wool",
 # Smelt, at a furnace, blast furnace or smoker.
 curl -X POST localhost:8181/smelt -d '{"input":"raw_iron","fuel":"coal","count":8}'
 
-# Trade with a villager until it locks out, and hear how many went through.
+# Read a merchant's offers, then trade by what it produces rather than by index.
 curl -X POST localhost:8181/container/open  -d '{"type":"villager"}'
-curl -X POST localhost:8181/container/trade -d '{"index":0,"times":10}'
+curl localhost:8181/trades
+curl -X POST localhost:8181/container/trade -d '{"item":"bread","times":10}'
 ```
+
+Offers come back decoded, including the spent ones — a test for lockout needs
+to see them rather than have them filtered away:
+
+```json
+{"index":0,"input":"minecraft:emerald","input_count":1,
+ "output":"minecraft:bread","count":6,"uses":0,"max_uses":4,"available":true}
+{"index":1,"input":"minecraft:emerald","input2":"minecraft:wheat",
+ "output":"minecraft:golden_carrot","uses":5,"max_uses":5,"available":false}
+```
+
+Trading a locked-out offer is refused *before* the packet goes out, naming the
+reason — a villager that has run out accepts the trade and silently does
+nothing, so the alternative symptom is an unexplained timeout.
 
 Every one reports what *actually* happened rather than what was asked for. A
 full chest keeps the remainder, a villager runs out of stock, a furnace given

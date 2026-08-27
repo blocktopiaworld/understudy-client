@@ -82,6 +82,7 @@ func v26_1() *protocol.Version {
 			CBPlaySetSlot:               20,
 			CBPlayOpenWindow:            59,
 			CBPlayCloseWindow:           17,
+			CBPlayTradeList:             52,
 			CBPlayHeldItemSlot:          105,
 			CBPlayCollect:               124,
 			CBPlayChunkBatchStart:       12,

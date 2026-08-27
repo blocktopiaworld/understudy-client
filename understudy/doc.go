@@ -78,6 +78,7 @@
 //	inventory.go   slots, item lookup, container clicks, pickups
 //	craft.go       the player's own 2x2 grid
 //	container.go   block and entity UIs: opening, clicking, trading
+//	trades.go      merchant offers: decoding, availability, trading by item
 //	windows.go     window types and slot layouts, read off a live server
 //	slots.go       moving items in and out of an open window
 //	workstation.go furnaces, anvils, looms, grindstones, smithing, brewing

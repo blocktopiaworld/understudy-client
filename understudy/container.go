@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/blocktopia/understudy-client/internal/inventory"
@@ -267,11 +269,10 @@ func (c *Client) ClickContainerButton(button int32) error {
 
 // SelectTrade chooses a villager's trade by its index in the offer list.
 //
-// The offers themselves are not decoded — their input items carry a component
-// matcher whose encoding this client cannot skip, and guessing at it would
-// desynchronise the packet. Selecting by index still works, and what the trade
-// produced is readable from the window's own slots afterwards, which is the
-// server's answer rather than a prediction of it.
+// The offers are decoded, so a caller can pick by index or read Trades() to
+// choose one. See TradeFor and TradeForItem to select by what a trade produces
+// rather than by its position, which survives a villager whose offer order
+// differs.
 func (c *Client) SelectTrade(index int32) error {
 	if !c.window.IsOpen() {
 		return ErrNoContainer
@@ -324,8 +325,14 @@ func (c *Client) handleContainerPacket(p protocol.Packet) (bool, error) {
 		// every component shape — and a failure here must not lose the window.
 		title := nbt.ReadableText(r.Remaining())
 		c.window.Open(id, kind, title)
+		c.mu.Lock()
+		c.trades = nil // a new window's offers have not arrived yet
+		c.mu.Unlock()
 		c.log.Info("container opened", "window", id, "type", kind, "title", title)
 		return true, nil
+
+	case c.v.Packets.CBPlayTradeList:
+		return true, c.handleTradeList(p)
 
 	case c.v.Packets.CBPlayCloseWindow:
 		r := p.Reader()
@@ -464,6 +471,21 @@ func (c *Client) Trade(ctx context.Context, index int32) (ItemStack, error) {
 	if !c.window.IsOpen() {
 		return ItemStack{}, ErrNoContainer
 	}
+	// Check the offer first now that the list is decoded. A spent trade is
+	// accepted and silently does nothing, so without this the only symptom is
+	// a timeout — which is the same symptom as a dozen other things.
+	for _, offer := range c.Trades() {
+		if offer.Index != index {
+			continue
+		}
+		if !offer.Available() {
+			return ItemStack{}, fmt.Errorf(
+				"understudy: trade %d (%s) is locked out — %d of %d uses spent, so the "+
+					"villager must restock before it will trade again",
+				index, offer, offer.Uses, offer.MaxUses)
+		}
+		break
+	}
 	before, _ := c.window.Slot(MerchantResultSlot)
 	if err := c.SelectTrade(index); err != nil {
 		return ItemStack{}, err
@@ -575,4 +597,25 @@ func (c *Client) TradeAndTake(ctx context.Context, index int32, times int) (done
 		}
 	}
 	return done, nil
+}
+
+// dumpTradeList writes the raw trade_list payload out when
+// UNDERSTUDY_DUMP_TRADES names a file.
+//
+// The offer list contains an "ExactComponentMatcher" that minecraft-data does
+// not describe, so the only honest way to learn its encoding is to read bytes
+// whose meaning is already known — summon a villager with a chosen trade, and
+// see which bytes carry it. Same reasoning as the chunk dump: guessing a length
+// desynchronises the rest of the packet and surfaces far from the mistake.
+var dumpTradesOnce sync.Once
+
+func dumpTradeList(payload []byte) {
+	path := os.Getenv("UNDERSTUDY_DUMP_TRADES")
+	if path == "" {
+		return
+	}
+	dumpTradesOnce.Do(func() {
+		// Operator-supplied debug path; no untrusted input here.
+		_ = os.WriteFile(path, payload, 0o644) //nolint:gosec // G703
+	})
 }

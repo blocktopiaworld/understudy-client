@@ -103,6 +103,7 @@ const PACKETS = [
   ['CBPlaySetSlot', 'play', 'toClient', 'set_slot'],
   ['CBPlayOpenWindow', 'play', 'toClient', 'open_window'],
   ['CBPlayCloseWindow', 'play', 'toClient', 'close_window'],
+  ['CBPlayTradeList', 'play', 'toClient', 'trade_list'],
   ['CBPlayHeldItemSlot', 'play', 'toClient', 'held_item_slot'],
   ['CBPlayCollect', 'play', 'toClient', 'collect'],
   ['CBPlayChunkBatchStart', 'play', 'toClient', 'chunk_batch_start'],
@@ -117,6 +118,7 @@ const OPTIONAL = new Set([
   'SBPlayPlayerLoaded',         // 1.21.4+
   'SBConfigAcceptCodeOfConduct', // 26.1+
   'CBConfigCodeOfConduct',       // 26.1+
+  'CBPlayTradeList',
   'SBPlayChunkBatchReceived',
   'CBPlayChunkBatchStart',
   'CBPlayChunkBatchFinished',

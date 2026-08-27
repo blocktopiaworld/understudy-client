@@ -81,6 +81,8 @@ type Bot interface {
 	AttackTimes(ctx context.Context, typeName string, times int) (understudy.Entity, int, error)
 	InteractEntity(entityID int32) error
 	InteractNearest(typeName string) (understudy.Entity, error)
+	InteractAt(entityID int32, dx, dy, dz float64) error
+	NearestEntity(typeName string) (understudy.Entity, error)
 
 	// acting on the world
 	Swing() error
@@ -112,6 +114,8 @@ type Bot interface {
 	SelectTrade(index int32) error
 	Trade(ctx context.Context, index int32) (understudy.ItemStack, error)
 	TradeAndTake(ctx context.Context, index int32, times int) (int, error)
+	Trades() []understudy.TradeOffer
+	TradeForItem(ctx context.Context, output string, times int) (int, error)
 
 	// window shape and slot moves
 	ContainerType() understudy.WindowType

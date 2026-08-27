@@ -107,3 +107,57 @@ func DecodeBlockPos(v int64) (x, y, z int32) {
 	y = int32(v << 52 >> 52)
 	return x, y, z
 }
+
+// F16 writes an IEEE-754 half-precision float.
+//
+// Minecraft uses these where a full float would be wasteful and the precision
+// does not matter — the "lpVec3" (low-precision vec3) carrying the point on an
+// entity that an interaction hit, which only has to be good enough to tell one
+// part of a boat from another.
+//
+// Getting the width wrong here is not subtle: the server reports the packet as
+// longer or shorter than it expected and drops the connection, which is at
+// least loud.
+func (w *Writer) F16(v float32) *Writer {
+	return w.U16(float16bits(v))
+}
+
+// U16 writes a big-endian unsigned 16-bit value.
+func (w *Writer) U16(v uint16) *Writer {
+	w.buf = binary.BigEndian.AppendUint16(w.buf, v)
+	return w
+}
+
+// float16bits converts a float32 to half-precision, rounding to nearest even.
+func float16bits(f float32) uint16 {
+	b := math.Float32bits(f)
+	sign := uint16((b >> 16) & 0x8000)
+	exp := int32((b>>23)&0xff) - 127 + 15
+	mantissa := b & 0x7fffff
+
+	switch {
+	case exp >= 0x1f: // overflow, or inf/NaN: saturate
+		if (b>>23)&0xff == 0xff && mantissa != 0 {
+			return sign | 0x7e00 // NaN
+		}
+		return sign | 0x7c00 // infinity
+	case exp <= 0: // subnormal or underflow to zero
+		if exp < -10 {
+			return sign
+		}
+		mantissa |= 0x800000
+		shift := uint32(14 - exp)
+		half := uint16(mantissa >> shift)
+		// Round to nearest even.
+		if mantissa&(1<<(shift-1)) != 0 {
+			half++
+		}
+		return sign | half
+	default:
+		half := sign | uint16(exp<<10) | uint16(mantissa>>13)
+		if mantissa&0x1000 != 0 { // round to nearest even
+			half++
+		}
+		return half
+	}
+}
