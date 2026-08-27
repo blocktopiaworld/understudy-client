@@ -290,25 +290,14 @@ func (c *Client) readSlotDisplay(r *protocol.Reader, depth int) (string, error) 
 	}
 }
 
-// readDisplayStack reads the id-first item stack a SlotDisplay carries.
+// readDisplayStack reads the id-first item stack a SlotDisplay carries — the
+// same encoding as an item nested inside a component.
 func (c *Client) readDisplayStack(r *protocol.Reader) (string, error) {
-	id := r.VarInt()
-	r.VarInt() // count
-	added := r.VarInt()
-	removed := r.VarInt()
-	if err := r.Err(); err != nil {
+	id, err := skipNestedStack(c.v, r)
+	if err != nil {
 		return "", err
 	}
-	for range added {
-		kind := r.VarInt()
-		if err := skipComponent(c.v, r, kind, nil); err != nil {
-			return "", fmt.Errorf("item %s: %w", c.v.ItemName(id), err)
-		}
-	}
-	for range removed {
-		r.VarInt()
-	}
-	return c.v.ItemName(id), r.Err()
+	return c.v.ItemName(id), nil
 }
 
 // readIDSet steps over the vanilla holder set: a count where zero means a tag

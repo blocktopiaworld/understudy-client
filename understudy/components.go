@@ -28,29 +28,50 @@ import (
 // a reading is right is that the whole packet then decodes and lands on its
 // final byte — a wrong width anywhere leaves the remainder as nonsense.
 //
-// Only the components that actually turn up in testing are here — thirteen of
-// the eighty-one that exist. The right answer for anything else is still to
+// Only the components that actually turn up in testing are here — thirty-four
+// of the eighty-one that exist. The right answer for anything else is still to
 // stop and say so, now with the name attached: see component_names.go.
 
 // Component type ids, as observed on 26.1.
 const (
-	componentCustomData         = 0
-	componentMaxStackSize       = 1
-	componentMaxDamage          = 2
-	componentDamage             = 3
-	componentUnbreakable        = 4
-	componentCustomName         = 6
-	componentItemName           = 9
-	componentLore               = 11
-	componentRarity             = 12
-	componentEnchantments       = 13
-	componentCustomModelData    = 17
-	componentRepairCost         = 19
-	componentStoredEnchantments = 42
-	componentDyedColor          = 44
-	componentMapID              = 46
-	componentPotionContents     = 51
-	componentStewEffects        = 53
+	componentCustomData          = 0
+	componentMaxStackSize        = 1
+	componentMaxDamage           = 2
+	componentDamage              = 3
+	componentUnbreakable         = 4
+	componentCustomName          = 6
+	componentItemName            = 9
+	componentLore                = 11
+	componentRarity              = 12
+	componentEnchantments        = 13
+	componentAttributeModifiers  = 16
+	componentCustomModelData     = 17
+	componentRepairCost          = 19
+	componentGlintOverride       = 21
+	componentStoredEnchantments  = 42
+	componentDyedColor           = 44
+	componentMapID               = 46
+	componentChargedProjectiles  = 49
+	componentBundleContents      = 50
+	componentPotionContents      = 51
+	componentPotionDurationScale = 52
+	componentStewEffects         = 53
+	componentWritableBook        = 54
+	componentWrittenBook         = 55
+	componentTrim                = 56
+	componentInstrument          = 61
+	componentOminousAmplifier    = 63
+	componentJukeboxPlayable     = 64
+	componentLodestoneTracker    = 67
+	componentFireworkExplosion   = 68
+	componentFireworks           = 69
+	componentProfile             = 70
+	componentNoteBlockSound      = 71
+	componentBannerPatterns      = 72
+	componentBaseColor           = 73
+	componentPotDecorations      = 74
+	componentContainer           = 75
+	componentBlockState          = 76
 )
 
 // skipComponent steps over one data component's payload.
@@ -84,30 +105,61 @@ func skipComponent(v *protocol.Version, r *protocol.Reader, kind int32, into *It
 		// A nameless NBT tag. custom_data is a whole compound, the two names
 		// are text components — all three step with the same walker.
 		return skipNBT(r)
+	case componentGlintOverride:
+		// One bool. Whether the item shimmers, forced either way.
+		r.Bool()
+		return r.Err()
+	case componentPotionDurationScale:
+		r.F32()
+		return r.Err()
+	case componentNoteBlockSound:
+		// The only plain string among these: a sound event's name, not a
+		// registry id, because a note block can name a sound that has none.
+		_ = r.String()
+		return r.Err()
+	case componentOminousAmplifier, componentBaseColor:
+		// Plain VarInts rather than holders — an amplifier is a number and a
+		// base colour is one of the sixteen dyes, neither of which can be
+		// defined inline.
+		r.VarInt()
+		return r.Err()
+	case componentInstrument, componentJukeboxPlayable:
+		return skipHolder(r, componentName(kind))
+	case componentTrim:
+		return skipTrim(r)
+	case componentContainer:
+		return skipContainerContents(v, r)
+	case componentFireworkExplosion:
+		return skipFireworkExplosion(r)
+	case componentAttributeModifiers:
+		return skipAttributeModifiers(r)
+	case componentLodestoneTracker:
+		return skipLodestoneTracker(r)
+	case componentProfile:
+		return skipProfile(r)
+	case componentWrittenBook:
+		return skipWrittenBook(r)
 	case componentLore:
 		// A count, then that many NBT text components. Confirmed with one line
 		// and with three.
-		for range r.VarInt() {
-			if err := skipNBT(r); err != nil {
-				return err
-			}
-		}
-		return r.Err()
+		return skipNBTList(r)
 	case componentCustomModelData:
-		// Four lists: floats, flags, strings and colours.
-		for range r.VarInt() {
-			r.F32()
-		}
-		for range r.VarInt() {
-			r.Bool()
-		}
-		for range r.VarInt() {
-			_ = r.String()
-		}
-		for range r.VarInt() {
-			r.I32()
-		}
-		return r.Err()
+		return skipCustomModelData(r)
+	case componentPotDecorations:
+		// Four sherd item ids, one per side.
+		return skipVarIntList(r)
+	case componentBlockState:
+		// The properties a block item carries, as name/value string pairs —
+		// `facing` and `north` for a stone placed facing north.
+		return skipStringPairs(r)
+	case componentBannerPatterns:
+		return skipBannerPatterns(r)
+	case componentChargedProjectiles, componentBundleContents:
+		return skipNestedStackList(v, r)
+	case componentFireworks:
+		return skipFireworks(r)
+	case componentWritableBook:
+		return skipWritableBook(r)
 	case componentEnchantments, componentStoredEnchantments, componentStewEffects:
 		// All three are the same shape: a count, then that many pairs of
 		// VarInts. Enchantments are id and level, a stew's effects are id and
@@ -169,6 +221,291 @@ func skipPotionContents(r *protocol.Reader, into *ItemStack) error {
 	if n := r.VarInt(); n != 0 {
 		return fmt.Errorf("potion carries %d effects to apply, which cannot be skipped", n)
 	}
+	return r.Err()
+}
+
+// skipTrim steps over an armour trim: two holders, the material and the
+// pattern. Gold and coast came back as 5 and 2 against registry indices 4 and
+// 1. Nothing else follows — the flag that used to show the trim in the tooltip
+// moved out into tooltip_display.
+func skipTrim(r *protocol.Reader) error {
+	if err := skipHolder(r, "trim material"); err != nil {
+		return err
+	}
+	return skipHolder(r, "trim pattern")
+}
+
+// skipNBTList steps over a count and that many nameless NBT tags.
+func skipNBTList(r *protocol.Reader) error {
+	for range r.VarInt() {
+		if err := skipNBT(r); err != nil {
+			return err
+		}
+	}
+	return r.Err()
+}
+
+// skipVarIntList steps over a count and that many VarInts.
+func skipVarIntList(r *protocol.Reader) error {
+	for range r.VarInt() {
+		r.VarInt()
+	}
+	return r.Err()
+}
+
+// skipStringPairs steps over a count and that many pairs of strings.
+func skipStringPairs(r *protocol.Reader) error {
+	for range r.VarInt() {
+		_ = r.String()
+		_ = r.String()
+	}
+	return r.Err()
+}
+
+// skipCustomModelData steps over four lists: floats, flags, strings and
+// colours.
+func skipCustomModelData(r *protocol.Reader) error {
+	for range r.VarInt() {
+		r.F32()
+	}
+	for range r.VarInt() {
+		r.Bool()
+	}
+	for range r.VarInt() {
+		_ = r.String()
+	}
+	for range r.VarInt() {
+		r.I32()
+	}
+	return r.Err()
+}
+
+// skipBannerPatterns steps over a banner's layers: a holder and a dye colour
+// apiece. Confirmed with a one-layer banner and a two-layer one.
+func skipBannerPatterns(r *protocol.Reader) error {
+	for range r.VarInt() {
+		if err := skipHolder(r, "banner pattern"); err != nil {
+			return err
+		}
+		r.VarInt() // dye colour
+	}
+	return r.Err()
+}
+
+// skipNestedStackList steps over a count and that many item stacks. Confirmed
+// with a crossbow holding one arrow and another holding an arrow and a rocket.
+func skipNestedStackList(v *protocol.Version, r *protocol.Reader) error {
+	for range r.VarInt() {
+		if _, err := skipNestedStack(v, r); err != nil {
+			return err
+		}
+	}
+	return r.Err()
+}
+
+// skipFireworks steps over a rocket: how long it flies, and the bursts.
+func skipFireworks(r *protocol.Reader) error {
+	r.VarInt() // flight duration
+	for range r.VarInt() {
+		if err := skipFireworkExplosion(r); err != nil {
+			return err
+		}
+	}
+	return r.Err()
+}
+
+// skipWritableBook steps over a book still being written: pages are raw
+// strings, each with an optional filtered version beside it.
+func skipWritableBook(r *protocol.Reader) error {
+	for range r.VarInt() {
+		_ = r.String()
+		if r.Bool() {
+			_ = r.String()
+		}
+	}
+	return r.Err()
+}
+
+// skipHolder steps over a reference to a registry entry.
+//
+// The vanilla convention is an id one greater than the registry index, with
+// zero reserved to mean "the definition follows inline". Three independent
+// registries confirm it: banner pattern `cross` arrived as 6 and `stripe_top`
+// as 39 against alphabetical indices 5 and 38, a gold/coast armour trim as 5
+// and 2 against 4 and 1, and `sing_goat_horn` as 7 against 6.
+//
+// The inline form is a whole definition whose shape differs per registry, so it
+// stops here rather than guessing. Nothing a server sends for an ordinary item
+// uses it — only a datapack that defines an entry the client has never seen.
+func skipHolder(r *protocol.Reader, what string) error {
+	if r.VarInt() == 0 {
+		return fmt.Errorf("%s is defined inline, which cannot be skipped", what)
+	}
+	return r.Err()
+}
+
+// skipNestedStack steps over an item stack held inside a component, returning
+// its id.
+//
+// Not the same encoding as an item in a packet: those lead with the count and
+// use a zero to mean empty, while one nested in a component leads with the id
+// and is never empty. The optional-ness, where there is any, sits outside.
+func skipNestedStack(v *protocol.Version, r *protocol.Reader) (int32, error) {
+	id := r.VarInt()
+	r.VarInt() // count
+	added := r.VarInt()
+	removed := r.VarInt()
+	if err := r.Err(); err != nil {
+		return id, err
+	}
+	for range added {
+		kind := r.VarInt()
+		if err := skipComponent(v, r, kind, nil); err != nil {
+			return id, fmt.Errorf("item %s: %w", v.ItemName(id), err)
+		}
+	}
+	for range removed {
+		r.VarInt()
+	}
+	return id, r.Err()
+}
+
+// skipContainerContents steps over what a shulker box or chest item holds.
+//
+// The list is dense rather than sparse: a box with something in slots 0 and 3
+// sends four entries, the two in between being a bare zero. That is why the
+// count is a slot count and not an item count.
+func skipContainerContents(v *protocol.Version, r *protocol.Reader) error {
+	for range r.VarInt() {
+		if !r.Bool() {
+			continue // an empty slot, one byte
+		}
+		if _, err := skipNestedStack(v, r); err != nil {
+			return err
+		}
+	}
+	return r.Err()
+}
+
+// skipFireworkExplosion steps over one burst: its shape, the colours it starts
+// and fades to, and the two flags.
+//
+// The colours are packed int32s. A rocket built with 0xFF0000 fading to 0xFF
+// came back as exactly those two words, which is what fixes them as int32s
+// rather than anything shorter.
+func skipFireworkExplosion(r *protocol.Reader) error {
+	r.VarInt() // shape
+	for range r.VarInt() {
+		r.I32() // colour
+	}
+	for range r.VarInt() {
+		r.I32() // fade colour
+	}
+	r.Bool() // trail
+	r.Bool() // twinkle
+	return r.Err()
+}
+
+// skipAttributeModifiers steps over the modifiers an item applies.
+//
+// Each is an attribute id, the modifier's own name, the amount as a float64,
+// how it combines, and which slot it applies in — then a display mode, which is
+// the field that made a diamond chestplate read one byte short until it was
+// found. Only mode 2 carries anything: a text component overriding the line
+// shown in the tooltip.
+func skipAttributeModifiers(r *protocol.Reader) error {
+	for range r.VarInt() {
+		r.VarInt()     // attribute
+		_ = r.String() // the modifier's id
+		r.F64()        // amount
+		r.VarInt()     // operation
+		r.VarInt()     // slot group
+		if r.VarInt() == 2 {
+			if err := skipNBT(r); err != nil {
+				return err
+			}
+		}
+	}
+	return r.Err()
+}
+
+// skipLodestoneTracker steps over a compass's lodestone.
+//
+// An optional target — a dimension name and a packed block position — then
+// whether the compass still tracks it. A compass pointed at 1,2,3 in the
+// overworld came back as the name followed by 0x4000003002, which is that
+// position packed the vanilla way.
+func skipLodestoneTracker(r *protocol.Reader) error {
+	if r.Bool() {
+		_ = r.String() // dimension
+		r.I64()        // packed position
+	}
+	r.Bool() // tracked
+	return r.Err()
+}
+
+// skipProfile steps over a player head's profile.
+//
+// It leads with a discriminator, which is the part a single sample cannot show.
+// Zero is the partial form, where the name and the uuid are each optional —
+// that is what a head named after someone the server has not resolved looks
+// like. One is the resolved form, where both are present and neither carries a
+// flag. Five heads pin it: two named, one with a uuid, and two with properties
+// with and without a signature.
+//
+// The four bytes at the end are zero on every head seen. They are read as four
+// absent optionals, which is the reading that fails loudly rather than
+// silently: a head that sets one stops the scan instead of desynchronising it.
+func skipProfile(r *protocol.Reader) error {
+	if r.VarInt() == 0 {
+		if r.Bool() {
+			_ = r.String() // name
+		}
+		if r.Bool() {
+			r.Skip(16) // uuid
+		}
+	} else {
+		r.Skip(16)
+		_ = r.String()
+	}
+	for range r.VarInt() {
+		_ = r.String() // property name
+		_ = r.String() // value
+		if r.Bool() {
+			_ = r.String() // signature
+		}
+	}
+	for i := range 4 {
+		if r.Bool() {
+			return fmt.Errorf("profile carries field %d after its properties, "+
+				"which has never been seen set and cannot be skipped", i)
+		}
+	}
+	return r.Err()
+}
+
+// skipWrittenBook steps over a signed book.
+//
+// Unlike a writable one, its pages are text components rather than raw strings,
+// so they step with the NBT walker.
+func skipWrittenBook(r *protocol.Reader) error {
+	_ = r.String() // title
+	if r.Bool() {
+		_ = r.String() // the filtered title
+	}
+	_ = r.String() // author
+	r.VarInt()     // generation
+	for range r.VarInt() {
+		if err := skipNBT(r); err != nil {
+			return err
+		}
+		if r.Bool() {
+			if err := skipNBT(r); err != nil {
+				return err
+			}
+		}
+	}
+	r.Bool() // resolved
 	return r.Err()
 }
 
