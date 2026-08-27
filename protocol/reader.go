@@ -51,6 +51,13 @@ func (r *Reader) Remaining() []byte {
 	return r.buf[r.pos:]
 }
 
+// Fail records an error from a caller that decoded something impossible.
+//
+// The reader itself only catches short reads. A length that is well-formed but
+// cannot describe the bytes remaining is a decode error the caller can see and
+// the reader cannot, and it has to stop the read the same way.
+func (r *Reader) Fail(err error) { r.fail(err) }
+
 func (r *Reader) fail(err error) {
 	if r.err == nil {
 		r.err = err

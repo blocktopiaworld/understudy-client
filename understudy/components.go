@@ -150,6 +150,29 @@ const (
 	componentZombieNautilusVariant = 99
 )
 
+// listLen reads a list length and refuses one the payload could not possibly
+// contain.
+//
+// Every element of every list here costs at least one byte, so a count larger
+// than the bytes remaining is not a long list, it is a corrupt one. Without
+// that check the loops ran on the count alone — and because an exhausted
+// reader returns zeros rather than failing, a claimed two billion elements
+// span two billion cheap iterations instead of stopping. Found by fuzzing: a
+// can_place_on payload of repeated 0xd3 bytes hung the decoder rather than
+// erroring.
+//
+// This is a bound on nonsense, not on real data. The largest legitimate list
+// here is a shulker box's twenty-seven slots.
+func listLen(r *protocol.Reader) int32 {
+	n := r.VarInt()
+	if n < 0 || int(n) > len(r.Remaining()) {
+		r.Fail(fmt.Errorf("list of %d needs more bytes than the %d that remain",
+			n, len(r.Remaining())))
+		return 0
+	}
+	return n
+}
+
 // canonicalComponent turns a component's wire id into the id this file
 // switches on.
 //
@@ -193,6 +216,29 @@ func canonicalComponent(v *protocol.Version, wire int32) (int32, error) {
 // Returns an error naming the type when it cannot, which the caller turns into
 // a partial window rather than a desynchronised one.
 func skipComponent(v *protocol.Version, r *protocol.Reader, wire int32, into *ItemStack) error {
+	return skipComponentAt(v, r, wire, into, 0)
+}
+
+// componentDepth bounds how far components may nest.
+//
+// They nest through items: a container holds item stacks, an item stack holds
+// components, and one of those components is a container again. Nothing bounded
+// that, so a payload of nested containers recursed once per layer. An eight-MiB
+// packet — the largest this client accepts — buys about 1.2 million layers,
+// which does not quite overflow the stack but grows it to 1.2 million frames
+// and spends a second doing it; a little more, and it is `fatal error: stack
+// overflow`, which no recover can catch.
+//
+// Found by fuzzing. Real items nest one or two deep, and the recipe decoder
+// already bounds its own recursion the same way at slotDisplayDepth.
+const componentDepth = 16
+
+// skipComponentAt is skipComponent with the nesting depth carried through it.
+func skipComponentAt(v *protocol.Version, r *protocol.Reader, wire int32, into *ItemStack, depth int) error {
+	if depth > componentDepth {
+		return fmt.Errorf("data components nested deeper than %d, which no real item does",
+			componentDepth)
+	}
 	kind, err := canonicalComponent(v, wire)
 	if err != nil {
 		return err
@@ -297,7 +343,7 @@ func skipComponent(v *protocol.Version, r *protocol.Reader, wire int32, into *It
 		}
 		return skipNBT(r)
 	default:
-		return skipShapedComponent(v, r, kind)
+		return skipShapedComponent(v, r, kind, depth)
 	}
 }
 
@@ -307,7 +353,7 @@ func skipComponent(v *protocol.Version, r *protocol.Reader, wire int32, into *It
 // Split from skipComponent only for length. The line between the two is that
 // everything above reads one thing — a number, a string, a tag, a registry
 // reference — and everything here reads several, or a list of several.
-func skipShapedComponent(v *protocol.Version, r *protocol.Reader, kind int32) error {
+func skipShapedComponent(v *protocol.Version, r *protocol.Reader, kind int32, depth int) error {
 	switch kind {
 	case componentCanPlaceOn, componentCanBreak:
 		return skipBlockPredicates(v, r)
@@ -328,11 +374,11 @@ func skipShapedComponent(v *protocol.Version, r *protocol.Reader, kind int32) er
 	case componentSulfurCubeContent:
 		// What a sulfur cube holds. One nested stack: a diamond arrives as its
 		// id, then a count of one, then no components.
-		_, err := skipNestedStack(v, r)
+		_, err := skipNestedStackAt(v, r, depth)
 		return err
 	case componentUseRemainder:
 		// What is left behind, as a nested stack — a bowl after the soup.
-		_, err := skipNestedStack(v, r)
+		_, err := skipNestedStackAt(v, r, depth)
 		return err
 	case componentUseCooldown:
 		// How long, and an optional group so several items can share one timer.
@@ -371,7 +417,7 @@ func skipShapedComponent(v *protocol.Version, r *protocol.Reader, kind int32) er
 	case componentTrim:
 		return skipTrim(v, r)
 	case componentContainer:
-		return skipContainerContents(v, r)
+		return skipContainerContents(v, r, depth)
 	case componentFireworkExplosion:
 		return skipFireworkExplosion(r)
 	case componentAttributeModifiers:
@@ -398,7 +444,7 @@ func skipShapedComponent(v *protocol.Version, r *protocol.Reader, kind int32) er
 	case componentBannerPatterns:
 		return skipBannerPatterns(r)
 	case componentChargedProjectiles, componentBundleContents:
-		return skipNestedStackList(v, r)
+		return skipNestedStackList(v, r, depth)
 	case componentFireworks:
 		return skipFireworks(r)
 	case componentWritableBook:
@@ -480,7 +526,7 @@ func skipPotionContents(r *protocol.Reader, into *ItemStack) error {
 func skipBlockPredicates(v *protocol.Version, r *protocol.Reader) error {
 	enc, _ := v.ComponentEncoding()
 	legacy := enc.LegacyBlockPredicates
-	for range r.VarInt() {
+	for range listLen(r) {
 		if r.Bool() {
 			readIDSet(r)
 		}
@@ -547,7 +593,7 @@ func skipDeathProtection(r *protocol.Reader, kind int32) error {
 // "counts as the right tool". Read back as the dirt/5.0/true that went in,
 // with 1.5 and 2 for the defaults after it.
 func skipTool(r *protocol.Reader) error {
-	for range r.VarInt() {
+	for range listLen(r) {
 		readIDSet(r)
 		if r.Bool() {
 			r.F32() // speed
@@ -732,7 +778,7 @@ func skipKineticWeapon(r *protocol.Reader) error {
 // front of an empty compound looks like nothing at all.
 func skipBees(v *protocol.Version, r *protocol.Reader) error {
 	enc, _ := v.ComponentEncoding()
-	for range r.VarInt() {
+	for range listLen(r) {
 		if !enc.EntityDataKeepsTypeInNBT {
 			r.VarInt() // entity type
 		}
@@ -764,7 +810,7 @@ func skipTrim(v *protocol.Version, r *protocol.Reader) error {
 
 // skipNBTList steps over a count and that many nameless NBT tags.
 func skipNBTList(r *protocol.Reader) error {
-	for range r.VarInt() {
+	for range listLen(r) {
 		if err := skipNBT(r); err != nil {
 			return err
 		}
@@ -774,7 +820,7 @@ func skipNBTList(r *protocol.Reader) error {
 
 // skipVarIntList steps over a count and that many VarInts.
 func skipVarIntList(r *protocol.Reader) error {
-	for range r.VarInt() {
+	for range listLen(r) {
 		r.VarInt()
 	}
 	return r.Err()
@@ -782,7 +828,7 @@ func skipVarIntList(r *protocol.Reader) error {
 
 // skipStringPairs steps over a count and that many pairs of strings.
 func skipStringPairs(r *protocol.Reader) error {
-	for range r.VarInt() {
+	for range listLen(r) {
 		_ = r.String()
 		_ = r.String()
 	}
@@ -792,16 +838,16 @@ func skipStringPairs(r *protocol.Reader) error {
 // skipCustomModelData steps over four lists: floats, flags, strings and
 // colours.
 func skipCustomModelData(r *protocol.Reader) error {
-	for range r.VarInt() {
+	for range listLen(r) {
 		r.F32()
 	}
-	for range r.VarInt() {
+	for range listLen(r) {
 		r.Bool()
 	}
-	for range r.VarInt() {
+	for range listLen(r) {
 		_ = r.String()
 	}
-	for range r.VarInt() {
+	for range listLen(r) {
 		r.I32()
 	}
 	return r.Err()
@@ -810,7 +856,7 @@ func skipCustomModelData(r *protocol.Reader) error {
 // skipBannerPatterns steps over a banner's layers: a holder and a dye colour
 // apiece. Confirmed with a one-layer banner and a two-layer one.
 func skipBannerPatterns(r *protocol.Reader) error {
-	for range r.VarInt() {
+	for range listLen(r) {
 		if err := skipHolder(r, "banner pattern"); err != nil {
 			return err
 		}
@@ -821,9 +867,9 @@ func skipBannerPatterns(r *protocol.Reader) error {
 
 // skipNestedStackList steps over a count and that many item stacks. Confirmed
 // with a crossbow holding one arrow and another holding an arrow and a rocket.
-func skipNestedStackList(v *protocol.Version, r *protocol.Reader) error {
-	for range r.VarInt() {
-		if _, err := skipNestedStack(v, r); err != nil {
+func skipNestedStackList(v *protocol.Version, r *protocol.Reader, depth int) error {
+	for range listLen(r) {
+		if _, err := skipNestedStackAt(v, r, depth); err != nil {
 			return err
 		}
 	}
@@ -833,7 +879,7 @@ func skipNestedStackList(v *protocol.Version, r *protocol.Reader) error {
 // skipFireworks steps over a rocket: how long it flies, and the bursts.
 func skipFireworks(r *protocol.Reader) error {
 	r.VarInt() // flight duration
-	for range r.VarInt() {
+	for range listLen(r) {
 		if err := skipFireworkExplosion(r); err != nil {
 			return err
 		}
@@ -844,7 +890,7 @@ func skipFireworks(r *protocol.Reader) error {
 // skipWritableBook steps over a book still being written: pages are raw
 // strings, each with an optional filtered version beside it.
 func skipWritableBook(r *protocol.Reader) error {
-	for range r.VarInt() {
+	for range listLen(r) {
 		_ = r.String()
 		if r.Bool() {
 			_ = r.String()
@@ -899,6 +945,11 @@ func skipFlaggedHolder(v *protocol.Version, r *protocol.Reader, what string) err
 // Both orders were measured — a bowl left behind by a soup is `fd 06 01 00 00`
 // on one and `01 fc 06 00 00` on the other.
 func skipNestedStack(v *protocol.Version, r *protocol.Reader) (int32, error) {
+	return skipNestedStackAt(v, r, 0)
+}
+
+// skipNestedStackAt is skipNestedStack with the nesting depth carried through.
+func skipNestedStackAt(v *protocol.Version, r *protocol.Reader, depth int) (int32, error) {
 	var id int32
 	if enc, _ := v.ComponentEncoding(); enc.NestedStacksCountFirst {
 		r.VarInt() // count
@@ -907,14 +958,19 @@ func skipNestedStack(v *protocol.Version, r *protocol.Reader) (int32, error) {
 		id = r.VarInt()
 		r.VarInt() // count
 	}
-	added := r.VarInt()
-	removed := r.VarInt()
+	// Bounded the same way every other list here is: a component costs at
+	// least a byte, so a count past the bytes remaining is corrupt rather
+	// than long. An exhausted reader returns zeros instead of failing, so
+	// without this a claimed hundred million removals is a hundred million
+	// iterations. Found by fuzzing readSlot.
+	added := listLen(r)
+	removed := listLen(r)
 	if err := r.Err(); err != nil {
 		return id, err
 	}
 	for range added {
 		kind := r.VarInt()
-		if err := skipComponent(v, r, kind, nil); err != nil {
+		if err := skipComponentAt(v, r, kind, nil, depth+1); err != nil {
 			return id, fmt.Errorf("item %s: %w", v.ItemName(id), err)
 		}
 	}
@@ -929,9 +985,9 @@ func skipNestedStack(v *protocol.Version, r *protocol.Reader) (int32, error) {
 // The list is dense rather than sparse: a box with something in slots 0 and 3
 // sends four entries, the two in between being a bare zero. That is why the
 // count is a slot count and not an item count.
-func skipContainerContents(v *protocol.Version, r *protocol.Reader) error {
+func skipContainerContents(v *protocol.Version, r *protocol.Reader, depth int) error {
 	enc, _ := v.ComponentEncoding()
-	for range r.VarInt() {
+	for range listLen(r) {
 		if enc.NestedStacksCountFirst {
 			// The count leads, so a zero is the empty slot and there is no
 			// separate flag to read.
@@ -945,7 +1001,7 @@ func skipContainerContents(v *protocol.Version, r *protocol.Reader) error {
 		} else if !r.Bool() {
 			continue // an empty slot, one byte
 		}
-		if _, err := skipNestedStack(v, r); err != nil {
+		if _, err := skipNestedStackAt(v, r, depth); err != nil {
 			return err
 		}
 	}
@@ -960,10 +1016,10 @@ func skipContainerContents(v *protocol.Version, r *protocol.Reader) error {
 // rather than anything shorter.
 func skipFireworkExplosion(r *protocol.Reader) error {
 	r.VarInt() // shape
-	for range r.VarInt() {
+	for range listLen(r) {
 		r.I32() // colour
 	}
-	for range r.VarInt() {
+	for range listLen(r) {
 		r.I32() // fade colour
 	}
 	r.Bool() // trail
@@ -979,7 +1035,7 @@ func skipFireworkExplosion(r *protocol.Reader) error {
 // found. Only mode 2 carries anything: a text component overriding the line
 // shown in the tooltip.
 func skipAttributeModifiers(r *protocol.Reader) error {
-	for range r.VarInt() {
+	for range listLen(r) {
 		r.VarInt()     // attribute
 		_ = r.String() // the modifier's id
 		r.F64()        // amount
@@ -1051,7 +1107,7 @@ func skipProfile(v *protocol.Version, r *protocol.Reader) error {
 // skipProfileProperties steps over a profile's properties, and the trailing
 // fields that follow them on the versions that have any.
 func skipProfileProperties(r *protocol.Reader, trailing bool) error {
-	for range r.VarInt() {
+	for range listLen(r) {
 		_ = r.String() // property name
 		_ = r.String() // value
 		if r.Bool() {
@@ -1081,7 +1137,7 @@ func skipWrittenBook(r *protocol.Reader) error {
 	}
 	_ = r.String() // author
 	r.VarInt()     // generation
-	for range r.VarInt() {
+	for range listLen(r) {
 		if err := skipNBT(r); err != nil {
 			return err
 		}
@@ -1100,7 +1156,7 @@ func skipWrittenBook(r *protocol.Reader) error {
 // Shared because three separate components turn out to use it — enchantments,
 // an enchanted book's stored enchantments, and a suspicious stew's effects.
 func skipVarIntPairs(r *protocol.Reader) error {
-	for range r.VarInt() {
+	for range listLen(r) {
 		r.VarInt()
 		r.VarInt()
 	}

@@ -27,14 +27,31 @@ see from a person.
 
 ## Status
 
-Verified against **Fabric 26.1.2** by a live acceptance sweep that asserts
-every result through RCON — the server's view, not the client's self-report,
-because "the client believes it placed a block" is exactly the failure being
-tested for.
+Verified against real servers, not just unit tests. Every assertion goes
+through RCON — the server's view, not the client's self-report, because "the
+client believes it placed a block" is exactly the failure being tested for.
 
-Paper is not yet covered. The protocol is the same, so it is expected to work;
-"expected to work" is not the same as tested, and this README will say so when
-it changes.
+| Server | Verified |
+| --- | --- |
+| Paper 26.2 | acceptance sweep, components, recipe book, mining, reach |
+| Fabric 26.2 | acceptance sweep, components, recipe book |
+| Fabric 26.1.2 | acceptance sweep, components, recipe book |
+| vanilla 26.2, 1.21.11, 1.21.4 | components; 1.21.11 recipe book |
+
+Protocol support is per-version and not assumed to carry across. Data component
+ids and payload shapes both move between versions — between 1.21.4 and 26.1
+only five of sixty-seven component ids kept their number — so each version
+carries its own tables and its own measured encodings. A version whose
+encodings have not been measured refuses to decode components and says so,
+rather than reading them at the wrong offsets and desynchronising quietly.
+
+See [protocol/versions/doc.go](protocol/versions/doc.go) for what "supported"
+means per version, and what adding one costs.
+
+## Dependencies
+
+None. The module requires only the Go standard library, so `go.sum` is empty
+and there is no supply chain to audit.
 
 ## Install
 
@@ -72,8 +89,8 @@ understudy-client -addr localhost:25565 -username Probe -hold 0 -control 8181
 | `-no-respawn` | stay dead instead of respawning |
 | `-debug`, `-trace` | debug logging; log every clientbound packet ID |
 
-Supported versions: **26.1**, **1.21.11**, **1.21.4**. Adding one is a
-generator run, not a code change — see [Adding a version](#adding-a-version).
+Supported versions: **26.2**, **26.1**, **1.21.11**, **1.21.4**. Adding one is
+mostly generator runs — see [Adding a version](#adding-a-version).
 
 ## Drive it over HTTP
 
@@ -219,20 +236,54 @@ knows nothing about HTTP.
 
 ## Adding a version
 
-Packet IDs are dense indices that shift whenever Mojang inserts a packet, so
-they are generated rather than written:
+Three things move between versions, and only the first is in minecraft-data.
+
+**Packet ids, item and block tables.** Dense indices that shift whenever Mojang
+inserts an entry, so they are generated:
 
 ```sh
 npm pack minecraft-data && tar xf minecraft-data-*.tgz
 node internal/gen/genversion.mjs package/minecraft-data/data \
      1.21.11 protocol/versions/version_1_21_11.go
+```
+
+If minecraft-data has not shipped the version yet — it had no 26.2 when 26.2
+was added — build its input from the server's own reports first:
+
+```sh
+java -DbundlerMainClass=net.minecraft.data.Main -jar server.jar --reports
+node internal/gen/reports-to-mcdata.mjs generated/reports 26.2 776 \
+     package/minecraft-data/data 26.1
+```
+
+**Data component and slot display ids.** In no published dataset at all, so
+they come from the server:
+
+```sh
+node internal/gen/gencomponents.mjs generated/reports/registries.json \
+     26.2 protocol/versions/version_26_2_components.go
+```
+
+**Payload encodings.** These are measured against a running server, not
+generated, and they are the part that cannot be skipped: knowing which id is
+which does not tell you how the payload is laid out. 1.21.11 writes an item
+nested in a component count-first where 26.1 writes it id-first. Fill in
+`Components` only after checking, and never by copying another version's —
+1.21.4 and 1.21.11 disagree with each other as much as either does with 26.1.
+
+Leaving `Components` nil is a valid answer: components then refuse to decode on
+that version and report why, which costs a partial inventory view. Guessing
+costs a desynchronised one that reports nothing.
+
+```sh
 gofmt -w protocol/versions
-go test ./protocol/...
+go test ./protocol/... ./understudy/...
 ```
 
 The tests check that each table registers itself, that every packet the client
-needs is present rather than absent, and that item and entity names resolve —
-a table that quietly lost a packet ID would otherwise fail silently at runtime.
+needs is present rather than absent, that item and entity names resolve, and
+that no version is left without component tables — a table that quietly lost an
+id would otherwise fail silently at runtime.
 
 ## Development
 

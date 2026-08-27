@@ -1,0 +1,63 @@
+# What CI runs is exactly what `make check` runs locally, in the same order.
+# A contributor who runs `make check` before pushing should never be surprised
+# here, and if these two ever drift the Makefile is the one to fix.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          # Read from go.mod so the toolchain cannot drift from what the module
+          # declares. This project has no dependencies, so there is nothing else
+          # a version bump could disturb.
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: formatting
+        run: make fmt-check
+
+      - name: vet
+        run: make vet
+
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          # The Makefile finds golangci-lint wherever it is; the action installs
+          # its own, so let the action drive it and keep one config file.
+          args: --config .golangci.yml
+
+      - name: tests under the race detector
+        run: make race
+
+      - name: build
+        run: make build
+
+  # Generated tables are checked in, and a stale one is not a compile error —
+  # it is a silently wrong protocol table. This proves the checked-in files are
+  # what the generators actually produce.
+  generated:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: the version tables compile and register
+        run: go test ./protocol/... -run Version -count=1

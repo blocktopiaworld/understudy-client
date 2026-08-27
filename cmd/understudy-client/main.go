@@ -21,6 +21,13 @@ import (
 	"github.com/blocktopia/understudy-client/understudy"
 )
 
+// buildVersion is stamped at release time with -ldflags "-X main.buildVersion=...".
+//
+// Named for the build rather than for Minecraft, because -version already means
+// "the Minecraft version to speak" and one of those two had to give way. A
+// binary built any other way says "dev", which is the honest answer.
+var buildVersion = "dev"
+
 func main() {
 	// All the work is in run so that every defer — the signal handler, the
 	// connection close, the context cancels — actually runs. os.Exit does not
@@ -81,7 +88,8 @@ func run(args []string, stderr *os.File) error {
 	}
 
 	if cfg.listVersions {
-		_, err := fmt.Fprintln(stderr, strings.Join(protocol.Names(), "\n"))
+		_, err := fmt.Fprintf(stderr, "understudy-client %s\nspeaks: %s\n",
+			buildVersion, strings.Join(protocol.Names(), ", "))
 		return err
 	}
 

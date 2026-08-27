@@ -31,7 +31,7 @@ const (
 //
 // The values are taken from the real 26.1 table where one exists, so a test
 // that builds a packet is building the shape the wire actually carries.
-func testPackets(t *testing.T) protocol.PacketIDs {
+func testPackets(t testing.TB) protocol.PacketIDs {
 	t.Helper()
 	v, err := protocol.ByName("26.1")
 	if err != nil {
@@ -42,7 +42,7 @@ func testPackets(t *testing.T) protocol.PacketIDs {
 
 // testVersion is a synthetic table: real packet IDs, but a tiny block
 // classification so a test can reason about states by name.
-func testVersion(t *testing.T) *protocol.Version {
+func testVersion(t testing.TB) *protocol.Version {
 	t.Helper()
 	return protocol.NewVersion(protocol.VersionSpec{
 		Name:     "test",

@@ -340,6 +340,15 @@ func readIDSet(r *protocol.Reader) {
 		_ = r.String() // a tag name stands in for the set
 		return
 	}
+	// Each id costs at least a byte, so a count past the bytes remaining is
+	// corrupt rather than large. Without this the loop ran on the count alone,
+	// and an exhausted reader returns zeros instead of failing — so a claimed
+	// two billion ids span two billion iterations. Found by fuzzing.
+	if n < 0 || int(n)-1 > len(r.Remaining()) {
+		r.Fail(fmt.Errorf("holder set of %d needs more bytes than the %d that remain",
+			n-1, len(r.Remaining())))
+		return
+	}
 	for range n - 1 {
 		r.VarInt()
 	}

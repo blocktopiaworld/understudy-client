@@ -213,6 +213,9 @@ func readSlotFinal(v *protocol.Version, r *protocol.Reader) (ItemStack, error) {
 		return ItemStack{}, nil
 	}
 	id := r.VarInt()
+	// Not bounded, unlike readSlot: nothing here walks the components, so a
+	// count that could not possibly be real costs nothing. The item is the
+	// last field of its packet, which is the whole reason this variant exists.
 	added := r.VarInt()
 	removed := r.VarInt()
 	if err := r.Err(); err != nil {
@@ -269,8 +272,13 @@ func readSlot(v *protocol.Version, r *protocol.Reader) (ItemStack, error) {
 		return ItemStack{}, nil
 	}
 	id := r.VarInt()
-	added := r.VarInt()
-	removed := r.VarInt()
+	// Bounded the same way every other list here is: a component costs at
+	// least a byte, so a count past the bytes remaining is corrupt rather
+	// than long. An exhausted reader returns zeros instead of failing, so
+	// without this a claimed hundred million removals is a hundred million
+	// iterations. Found by fuzzing readSlot.
+	added := listLen(r)
+	removed := listLen(r)
 	if err := r.Err(); err != nil {
 		return ItemStack{}, err
 	}
