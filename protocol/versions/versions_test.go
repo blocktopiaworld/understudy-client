@@ -181,3 +181,40 @@ func TestChunkFormatFollowsTheProtocolNumber(t *testing.T) {
 		}
 	}
 }
+
+// Component support lives in fields that genversion.mjs does not generate, in
+// files that say DO NOT EDIT. Regenerating one drops them, and dropping them
+// does not break the build — it just turns component decoding off for that
+// version, quietly. This is the alarm on that.
+func TestEveryVersionCarriesComponentTables(t *testing.T) {
+	for _, name := range protocol.Names() {
+		v, err := protocol.ByName(name)
+		if err != nil {
+			t.Fatalf("registered version %q does not resolve: %v", name, err)
+		}
+		if !v.HasComponentIDs() {
+			t.Errorf("%s has no component id table — if that file was just "+
+				"regenerated, re-run internal/gen/gencomponents.mjs", name)
+		}
+		if _, ok := v.SlotDisplayKind(0); !ok {
+			t.Errorf("%s has no slot display table, so its recipe book will stop "+
+				"at the first composite ingredient", name)
+		}
+	}
+}
+
+// The versions whose component encodings were measured must keep them, for the
+// same reason: losing the literal silently disables decoding rather than
+// failing.
+func TestMeasuredVersionsKeepTheirEncodings(t *testing.T) {
+	for _, name := range []string{"26.1", "1.21.11", "1.21.4"} {
+		v, err := protocol.ByName(name)
+		if err != nil {
+			t.Skipf("%s is not registered in this build", name)
+		}
+		if _, ok := v.ComponentEncoding(); !ok {
+			t.Errorf("%s had its component encodings measured against a running "+
+				"server; the Components literal is missing", name)
+		}
+	}
+}

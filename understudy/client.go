@@ -136,6 +136,11 @@ type Client struct {
 	window   *inventory.Container
 	trades   []TradeOffer
 	recipes  map[string]RecipeID
+	// recipesMissing counts entries the server sent that could not be decoded.
+	// Without it a short book is indistinguishable from a small one, and
+	// "no recipe for that" reads the same whether the recipe does not exist or
+	// simply never decoded.
+	recipesMissing int
 	// v holds every version-specific detail: packet IDs, entity and block
 	// tables, and the chunk framing flags. Resolved during Connect, since
 	// auto-detection needs a round trip to the server, and read-only after.

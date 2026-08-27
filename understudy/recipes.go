@@ -86,6 +86,20 @@ func (c *Client) KnownRecipes() int {
 	return len(c.recipes)
 }
 
+// MissingRecipes returns how many entries the server sent that could not be
+// decoded.
+//
+// Nonzero means RecipeFor's answers are incomplete rather than authoritative,
+// and that is a distinction worth having: a partially decoded book answers "no
+// recipe for that" in exactly the same words as a complete one, so without this
+// a version whose book half-decodes looks like a version where half the recipes
+// do not exist.
+func (c *Client) MissingRecipes() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.recipesMissing
+}
+
 // CraftRecipeFor asks the server to craft a named item in the open window.
 //
 // This is the cheap path: the server lays the grid out from its own recipe
@@ -99,6 +113,13 @@ func (c *Client) KnownRecipes() int {
 func (c *Client) CraftRecipeFor(ctx context.Context, name string, all bool) error {
 	id, ok := c.RecipeFor(name)
 	if !ok {
+		if missing := c.MissingRecipes(); missing > 0 {
+			return fmt.Errorf(
+				"understudy: no recipe known for %q, but %d of the server's entries "+
+					"could not be decoded (%d were) — so this may be a recipe that "+
+					"exists and did not read, not one that is absent",
+				name, missing, c.KnownRecipes())
+		}
 		return fmt.Errorf(
 			"understudy: no recipe known for %q (%d recipes learned from the server) — "+
 				"CraftInGrid places ingredients by hand and needs no recipe book",
@@ -155,6 +176,7 @@ func (c *Client) handleRecipeBook(p protocol.Packet) error {
 	}
 
 	c.mu.Lock()
+	c.recipesMissing += int(count) - decoded
 	// recipe_book_add is additive unless the server says to replace, and the
 	// first one on a session is empty — so merge rather than overwrite, or the
 	// book is lost the moment anything unlocks a single recipe.
