@@ -54,6 +54,19 @@ const (
 // accepts and applies somewhere unintended.
 var ErrNoContainer = errors.New("understudy: no container window is open")
 
+// ErrNotConnected reports that something tried to put a packet on a wire that
+// is not there. Only reachable before Connect or after Close; it exists so
+// those paths return an error rather than panicking on a nil connection.
+var ErrNotConnected = errors.New("understudy: not connected")
+
+// requireConn guards the write paths that a caller can reach without a session.
+func (c *Client) requireConn() error {
+	if c.conn == nil {
+		return ErrNotConnected
+	}
+	return nil
+}
+
 // containerOpenTimeout bounds the wait for a window after using a block. The
 // server opens it within a tick or two; anything longer means the block was
 // not a container, or the interaction never landed.
@@ -204,6 +217,9 @@ func (c *Client) ClickContainerSlot(slot int, button int8, mode int32) error {
 	id := c.window.ID()
 	if id == inventory.NoWindow {
 		return ErrNoContainer
+	}
+	if err := c.requireConn(); err != nil {
+		return err
 	}
 	if c.v.Packets.SBPlayWindowClick == protocol.Absent {
 		return fmt.Errorf("understudy: %s has no window_click packet", c.v.Name)
