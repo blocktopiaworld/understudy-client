@@ -115,6 +115,12 @@ curl -X POST localhost:8181/container/grid -d '{"layout":{"1":"white_wool",
   "2":"white_wool","3":"white_wool","4":"white_wool","5":"white_wool",
   "6":"white_wool","8":"stick"},"repeat":3}'
 
+# Or ask the server to do it from its own recipe book — one packet, and it
+# repeats until the ingredients run out.
+curl localhost:8181/recipes?item=white_banner
+curl -X POST localhost:8181/container/craft -d '{"item":"white_banner","all":true}'
+curl -X POST localhost:8181/container/take  -d '{"slot":0}'
+
 # Smelt, at a furnace, blast furnace or smoker.
 curl -X POST localhost:8181/smelt -d '{"input":"raw_iron","fuel":"coal","count":8}'
 

@@ -83,6 +83,7 @@ func v1_21_4() *protocol.Version {
 			CBPlayOpenWindow:            53,
 			CBPlayCloseWindow:           18,
 			CBPlayTradeList:             46,
+			CBPlayRecipeBookAdd:         68,
 			CBPlayHeldItemSlot:          99,
 			CBPlayCollect:               118,
 			CBPlayChunkBatchStart:       13,

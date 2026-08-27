@@ -111,6 +111,9 @@ type Bot interface {
 	ClickContainerButton(button int32) error
 	CraftRecipe(recipeID int32, all bool) error
 	CraftInGrid(ctx context.Context, layout map[int]string, repeat int) (understudy.ItemStack, error)
+	CraftRecipeFor(ctx context.Context, name string, all bool) error
+	RecipeFor(name string) (understudy.RecipeID, bool)
+	KnownRecipes() int
 	SelectTrade(index int32) error
 	Trade(ctx context.Context, index int32) (understudy.ItemStack, error)
 	TradeAndTake(ctx context.Context, index int32, times int) (int, error)

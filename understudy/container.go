@@ -331,6 +331,9 @@ func (c *Client) handleContainerPacket(p protocol.Packet) (bool, error) {
 		c.log.Info("container opened", "window", id, "type", kind, "title", title)
 		return true, nil
 
+	case c.v.Packets.CBPlayRecipeBookAdd:
+		return true, c.handleRecipeBook(p)
+
 	case c.v.Packets.CBPlayTradeList:
 		return true, c.handleTradeList(p)
 

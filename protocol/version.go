@@ -81,6 +81,7 @@ type PacketIDs struct {
 	CBPlayOpenWindow         int32
 	CBPlayCloseWindow        int32
 	CBPlayTradeList          int32
+	CBPlayRecipeBookAdd      int32
 	CBPlayHeldItemSlot       int32
 	CBPlayCollect            int32
 	CBPlayChunkBatchStart    int32

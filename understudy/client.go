@@ -135,6 +135,7 @@ type Client struct {
 	inv      *inventory.Inventory
 	window   *inventory.Container
 	trades   []TradeOffer
+	recipes  map[string]RecipeID
 	// v holds every version-specific detail: packet IDs, entity and block
 	// tables, and the chunk framing flags. Resolved during Connect, since
 	// auto-detection needs a round trip to the server, and read-only after.

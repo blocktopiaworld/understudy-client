@@ -583,3 +583,15 @@ func (b *stubBot) TradeForItem(ctx context.Context, output string, times int) (i
 	}
 	return max(times, 1), nil
 }
+
+func (b *stubBot) CraftRecipeFor(ctx context.Context, name string, all bool) error {
+	b.record("CraftRecipeFor:" + name)
+	return b.err
+}
+func (b *stubBot) RecipeFor(name string) (understudy.RecipeID, bool) {
+	if name == "white_banner" {
+		return understudy.RecipeID(931), true
+	}
+	return 0, false
+}
+func (b *stubBot) KnownRecipes() int { return 984 }

@@ -57,6 +57,7 @@ func (s *Server) routes() *http.ServeMux {
 	// Container UIs: crafting tables, smithing tables, stonecutters, villagers.
 	mux.HandleFunc("GET /container", s.handleContainer)
 	mux.HandleFunc("GET /trades", s.handleTrades)
+	mux.HandleFunc("GET /recipes", s.handleRecipes)
 	mux.Handle("POST /container/open", handle(s, s.containerOpen))
 	mux.Handle("POST /container/close", handle(s, s.containerClose))
 	mux.Handle("POST /container/click", handle(s, s.containerClick))
@@ -749,10 +750,20 @@ func (s *Server) containerButton(_ context.Context, in struct {
 // containerCraft asks the server to lay out a recipe from its own recipe book,
 // rather than the caller placing ingredients slot by slot. all:true repeats
 // until the ingredients run out.
-func (s *Server) containerCraft(_ context.Context, in struct {
-	Recipe int32 `json:"recipe"`
-	All    bool  `json:"all"`
+func (s *Server) containerCraft(ctx context.Context, in struct {
+	Recipe int32  `json:"recipe"`
+	Item   string `json:"item"`
+	All    bool   `json:"all"`
 }) (body, error) {
+	// By name is the useful form: the recipe ids are the server's own and
+	// change between versions, so nothing outside this session can know them.
+	if in.Item != "" {
+		if err := s.bot.CraftRecipeFor(ctx, in.Item, in.All); err != nil {
+			return nil, err
+		}
+		id, _ := s.bot.RecipeFor(in.Item)
+		return body{"item": in.Item, "recipe": id, "all": in.All}, nil
+	}
 	return nil, s.bot.CraftRecipe(in.Recipe, in.All)
 }
 
@@ -1025,4 +1036,17 @@ func (s *Server) handleTrades(w http.ResponseWriter, _ *http.Request) {
 		out = append(out, row)
 	}
 	s.writeJSON(w, http.StatusOK, body{"count": len(out), "trades": out})
+}
+
+// handleRecipes reports what the server's recipe book taught us. ?item= looks
+// one up by what it produces.
+func (s *Server) handleRecipes(w http.ResponseWriter, r *http.Request) {
+	if name := r.URL.Query().Get("item"); name != "" {
+		id, ok := s.bot.RecipeFor(name)
+		s.writeJSON(w, http.StatusOK, body{
+			"item": name, "found": ok, "recipe": id, "known": s.bot.KnownRecipes(),
+		})
+		return
+	}
+	s.writeJSON(w, http.StatusOK, body{"known": s.bot.KnownRecipes()})
 }
