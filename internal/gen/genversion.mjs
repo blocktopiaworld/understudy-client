@@ -153,7 +153,7 @@ if (missing.length) {
 }
 
 // --- chunk format ----------------------------------------------------------
-// The two format differences that cannot be expressed as a table. Both are
+// The format differences that cannot be expressed as a table. All are
 // invisible until wrong, and then surface as a short read several sections
 // downstream — so they are stated per version rather than guessed.
 //
@@ -161,11 +161,15 @@ if (missing.length) {
 //                  count of longs; from 1.21.5 it is computed.
 //   HasFluidCount: from 26.1 each section carries a second int16 after the
 //                  solid block count.
-// Both thresholds are protocol numbers, taken from prismarine-chunk:
-//   < 770 is pre-1.21.5, when the data array still carried its length
+//   NBTHeightmaps: before 1.21.5 the heightmaps are one nameless NBT compound;
+//                  from 1.21.5 they are a prefixed array of {type, long[]}.
+// The thresholds are protocol numbers:
+//   < 770 is pre-1.21.5, when the data array still carried its length and the
+//         heightmaps were still NBT — one release changed both
 //   >= 775 is 26.1+, which added the per-section fluid count
 const chunkFormat = {
   hasSizePrefix: versionInfo.version < 770,
+  nbtHeightmaps: versionInfo.version < 770,
   hasFluidCount: versionInfo.version >= 775,
 }
 
@@ -245,6 +249,7 @@ lines.push(`\t\tProtocol: ${versionInfo.version},`)
 lines.push(`\t\tChunk: protocol.ChunkFormat{`)
 lines.push(`\t\t\tHasFluidCount: ${chunkFormat.hasFluidCount},`)
 lines.push(`\t\t\tHasSizePrefix: ${chunkFormat.hasSizePrefix},`)
+lines.push(`\t\t\tNBTHeightmaps: ${chunkFormat.nbtHeightmaps},`)
 lines.push(`\t\t},`)
 lines.push(`\t\tPackets: protocol.PacketIDs{`)
 for (const [field, id] of packetFields) lines.push(`\t\t\t${field}: ${id},`)

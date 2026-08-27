@@ -2,11 +2,13 @@ package understudy
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/blocktopia/understudy-client/internal/geom"
+	"github.com/blocktopia/understudy-client/internal/nbt"
 	"github.com/blocktopia/understudy-client/protocol"
 )
 
@@ -175,14 +177,29 @@ func (c *Client) handleWorldPacket(p protocol.Packet) (bool, error) {
 	case c.v.Packets.CBPlayMapChunk:
 		r := p.Reader()
 		x, z := r.I32(), r.I32()
-		// Heightmaps: an array of {type, data[]}. Skipped, but it has to be
-		// walked exactly or chunkData starts at the wrong offset.
-		heightmaps := r.VarInt()
-		for range heightmaps {
-			r.VarInt() // type
-			n := r.VarInt()
-			for range n {
-				r.I64()
+		// Heightmaps sit between the coordinates and the chunk data. Nothing
+		// here reads them, but they must be walked *exactly* or the data blob
+		// starts at the wrong offset — and that surfaces as a short read deep
+		// inside a later section, nowhere near the real mistake.
+		//
+		// Their shape changed in 1.21.5. Before that they are a single
+		// nameless NBT compound; from 1.21.5 they are a prefixed array of
+		// {type, long[]}. Reading the new shape off the old one takes a VarInt
+		// out of the middle of NBT and walks a garbage array.
+		if c.v.Chunk.NBTHeightmaps {
+			n, err := nbt.SkipTag(r.Remaining())
+			if err != nil {
+				return true, fmt.Errorf("understudy: chunk %d,%d heightmaps: %w", x, z, err)
+			}
+			r.Skip(n)
+		} else {
+			heightmaps := r.VarInt()
+			for range heightmaps {
+				r.VarInt() // type
+				n := r.VarInt()
+				for range n {
+					r.I64()
+				}
 			}
 		}
 		size := r.VarInt()

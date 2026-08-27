@@ -85,18 +85,26 @@ type PacketIDs struct {
 const Absent int32 = -1
 
 // ChunkFormat captures the parts of the chunk encoding that changed between
-// versions. These are the two that actually bite:
+// versions. These are the three that actually bite:
 //
 //   - HasSizePrefix: before 1.21.5 each paletted container carried a VarInt
 //     count of longs. From 1.21.5 it is computed instead, saving a byte.
 //   - HasFluidCount: from 26.1 each section carries a second int16 after the
 //     solid block count.
+//   - NBTHeightmaps: before 1.21.5 the heightmaps in a chunk packet are a
+//     single (nameless) NBT compound. From 1.21.5 they are a prefixed array of
+//     {VarInt type, prefixed array of long}. Nothing here reads heightmaps,
+//     but they sit between the coordinates and the chunk data, so walking them
+//     with the wrong shape puts the data blob at the wrong offset.
 //
-// Both are invisible until they are wrong, and then they surface as a short
-// read several sections downstream — nowhere near the actual mistake.
+// All three are invisible until they are wrong, and then they surface as a
+// short read several sections downstream — nowhere near the actual mistake.
+// The 1.21.5 chunk rework moved two of them at once, which is why
+// HasSizePrefix and NBTHeightmaps share a threshold.
 type ChunkFormat struct {
 	HasFluidCount bool
 	HasSizePrefix bool
+	NBTHeightmaps bool
 }
 
 // Version is everything this client needs to know that varies between

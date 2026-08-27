@@ -83,6 +83,14 @@ func (r *Reader) take(n int) []byte {
 	return zeroPad[:n]
 }
 
+// Skip advances the cursor past n bytes without decoding them.
+//
+// For fields this client does not need but must still step over exactly — the
+// pre-1.21.5 NBT heightmaps being the case it exists for. It shares take's
+// bounds check, so a length that overruns the buffer sets the error rather
+// than moving the cursor somewhere impossible.
+func (r *Reader) Skip(n int) { r.take(n) }
+
 // ReadByte satisfies io.ByteReader so the VarInt helpers can read from here.
 func (r *Reader) ReadByte() (byte, error) {
 	if r.err != nil {

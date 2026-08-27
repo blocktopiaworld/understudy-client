@@ -15,6 +15,7 @@ func v1_21_11() *protocol.Version {
 		Chunk: protocol.ChunkFormat{
 			HasFluidCount: false,
 			HasSizePrefix: false,
+			NBTHeightmaps: false,
 		},
 		Packets: protocol.PacketIDs{
 			SBHandshake:                 0,
