@@ -48,6 +48,10 @@ rather than reading them at the wrong offsets and desynchronising quietly.
 See [protocol/versions/doc.go](protocol/versions/doc.go) for what "supported"
 means per version, and what adding one costs.
 
+The acceptance harness that produces that table is in
+[acceptance/](acceptance/) and takes the server as parameters, so pointing it
+at your own is one line.
+
 ## Dependencies
 
 None. The module requires only the Go standard library, so `go.sum` is empty

@@ -45,6 +45,37 @@ A destroy packet's count was used to preallocate directly.
 
 **Fixed** with `maxEntitiesPerPacket = 1 << 16` in `understudy/entities.go`.
 
+### 4. Unbounded recursion through nested components
+
+Found later, by fuzzing rather than by reading. Components nest through items:
+a container holds item stacks, an item stack holds components, and one of those
+components is a container again. Nothing bounded the cycle.
+
+An eight-MiB packet — `MaxPacketSize`, the largest this client accepts — buys
+about 1.2 million layers. That does not quite overflow the stack, but it grows
+it to 1.2 million frames and spends a second there; a little deeper is
+`fatal error: stack overflow`, which no `recover` catches. The recipe decoder
+had bounded its own recursion at `slotDisplayDepth` from the start, so this was
+an inconsistency as much as a defect.
+
+**Fixed** with `componentDepth = 16` in `understudy/components.go`.
+
+### 5. Unbounded list lengths, everywhere
+
+The worse of the two, because it needs no nesting at all. Every
+`for range r.VarInt()` ran on the decoded count alone, and an exhausted reader
+returns zeros rather than failing — so a claimed two billion elements is two
+billion cheap iterations instead of an error. The fuzzer hung `skipComponent`
+with a `can_place_on` payload of repeated `0xd3` bytes, and hung `readSlot`
+with a large removed-components count.
+
+**Fixed** with `listLen`, which bounds a count by the bytes remaining rather
+than by a tuned constant: every element costs at least one byte, so a count
+larger than what is left is not a long list, it is a corrupt one. That cannot
+drift from what the data allows. `readSlotFinal` is deliberately exempt —
+nothing there walks the components, because the item is the last field of its
+packet, which is the whole reason that variant exists.
+
 ---
 
 ## Correctness
