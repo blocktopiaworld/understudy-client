@@ -49,6 +49,9 @@ func testVersion(t *testing.T) *protocol.Version {
 		Protocol: 9999,
 		Chunk:    protocol.ChunkFormat{HasFluidCount: true},
 		Packets:  testPackets(t),
+		// The test version stands in for 26.1, whose component ids the decoder
+		// was built against.
+		ComponentIDs: true,
 		EntityNames: []string{
 			0: "minecraft:pig",
 			1: "minecraft:zombie",

@@ -129,6 +129,16 @@ const (
 // Returns an error naming the type when it cannot, which the caller turns into
 // a partial window rather than a desynchronised one.
 func skipComponent(v *protocol.Version, r *protocol.Reader, kind int32, into *ItemStack) error {
+	// The ids below are a 26.1 registry's, and a registry's indices shift
+	// whenever Mojang inserts an entry. On another version this table would not
+	// fail — it would read the wrong shape for a component that happens to sit
+	// at the same number and desynchronise everything after it, with nothing to
+	// show for it. Refusing is the same outcome as an unknown component: a
+	// partial window, reported.
+	if v != nil && !v.ComponentIDs {
+		return fmt.Errorf("data component ids for %s have not been established; "+
+			"the table here is 26.1's and its numbering does not carry across", v.Name)
+	}
 	switch kind {
 	case componentPotionContents:
 		return skipPotionContents(r, into)

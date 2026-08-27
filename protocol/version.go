@@ -126,6 +126,17 @@ type Version struct {
 	Chunk    ChunkFormat
 	Packets  PacketIDs
 
+	// ComponentIDs says whether this version's data component type ids have
+	// been established. They are dense registry indices like packet ids, so
+	// they shift whenever Mojang adds a component — and unlike packet ids they
+	// are not in minecraft-data, so there is nothing to generate them from.
+	//
+	// The table in understudy/components.go was read off a 26.1 server. Using
+	// it on another version would not fail: it would decode a payload of the
+	// wrong shape and desynchronise the rest of the packet, silently. So a
+	// version that has not had its ids checked says so instead.
+	ComponentIDs bool
+
 	entityNames []string
 	itemNames   []string
 	itemStacks  []int32
@@ -155,6 +166,10 @@ type VersionSpec struct {
 	Chunk    ChunkFormat
 	Packets  PacketIDs
 
+	// ComponentIDs marks that this version's data component ids are the ones
+	// understudy/components.go was built against. See Version.ComponentIDs.
+	ComponentIDs bool
+
 	// EntityNames and ItemNames are indexed by wire ID; an empty string means
 	// the ID is unused in this version.
 	EntityNames []string
@@ -178,19 +193,20 @@ type VersionSpec struct {
 // Register for that.
 func NewVersion(spec VersionSpec) *Version {
 	return &Version{
-		Name:        spec.Name,
-		Protocol:    spec.Protocol,
-		Chunk:       spec.Chunk,
-		Packets:     spec.Packets,
-		entityNames: spec.EntityNames,
-		itemNames:   spec.ItemNames,
-		itemStacks:  spec.ItemStacks,
-		shapes:      spec.Shapes,
-		shapeRuns:   spec.ShapeRuns,
-		solidStates: spec.Solid,
-		waterStates: spec.Water,
-		lavaStates:  spec.Lava,
-		airStates:   spec.Air,
+		Name:         spec.Name,
+		Protocol:     spec.Protocol,
+		Chunk:        spec.Chunk,
+		Packets:      spec.Packets,
+		ComponentIDs: spec.ComponentIDs,
+		entityNames:  spec.EntityNames,
+		itemNames:    spec.ItemNames,
+		itemStacks:   spec.ItemStacks,
+		shapes:       spec.Shapes,
+		shapeRuns:    spec.ShapeRuns,
+		solidStates:  spec.Solid,
+		waterStates:  spec.Water,
+		lavaStates:   spec.Lava,
+		airStates:    spec.Air,
 	}
 }
 

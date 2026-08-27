@@ -12,6 +12,9 @@ func v26_1() *protocol.Version {
 	return protocol.NewVersion(protocol.VersionSpec{
 		Name:     "26.1",
 		Protocol: 775,
+		// The data component ids in understudy/components.go were read off a
+		// 26.1.2 server and checked against its own registry report.
+		ComponentIDs: true,
 		Chunk: protocol.ChunkFormat{
 			HasFluidCount: true,
 			HasSizePrefix: false,

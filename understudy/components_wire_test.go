@@ -418,3 +418,47 @@ func TestComponentNamesCoverTheRegistry(t *testing.T) {
 		}
 	}
 }
+
+// The component table belongs to one version, and using it on another is the
+// one failure this whole file cannot detect from the bytes: the ids are dense
+// registry indices, so a payload of the wrong shape still decodes, just wrongly.
+//
+// The 1.21.4 and 1.21.11 tables have never been established. Until they are,
+// an item with any component on those versions has to stop the scan rather than
+// silently desynchronise it.
+func TestComponentsRefuseAVersionWhoseIDsAreUnknown(t *testing.T) {
+	unchecked := protocol.NewVersion(protocol.VersionSpec{
+		Name:     "1.21.4",
+		Protocol: 769,
+		Packets:  testPackets(t),
+	})
+	// componentDamage is about as safe as a component gets — one VarInt, and
+	// present on every used tool. It must still be refused.
+	payload := []byte{37}
+	err := skipComponent(unchecked, protocol.NewReader(payload), componentDamage, nil)
+	if err == nil {
+		t.Fatal("decoded a component using 26.1's ids on 1.21.4, which reads the " +
+			"wrong shape and desynchronises the rest of the packet")
+	}
+	for _, want := range []string{"1.21.4", "26.1", "not been established"} {
+		if !contains(err.Error(), want) {
+			t.Errorf("error %q does not mention %q", err, want)
+		}
+	}
+}
+
+// The other half: the version the table *was* built against must not be
+// refused, or every item everywhere stops decoding.
+func TestComponentsAcceptTheVersionTheyWereBuiltFor(t *testing.T) {
+	v, err := protocol.ByProtocol(775)
+	if err != nil {
+		t.Skipf("26.1 is not registered in this build: %v", err)
+	}
+	if !v.ComponentIDs {
+		t.Fatal("26.1 is the version the component table was read from and must " +
+			"be marked as such")
+	}
+	if err := skipComponent(v, protocol.NewReader([]byte{37}), componentDamage, nil); err != nil {
+		t.Errorf("26.1 refused a damage component: %v", err)
+	}
+}
