@@ -268,11 +268,14 @@ func skipComponent(v *protocol.Version, r *protocol.Reader, wire int32, into *It
 		readIDSet(r)
 		return r.Err()
 	case componentEntityData, componentBlockEntityData:
-		// A type id and then the rest as NBT. The id is hoisted out of the
-		// compound rather than left in it — a pig spawn egg carrying
+		// A type id and then the rest as NBT — on the versions that hoist the
+		// type out of the compound. A pig spawn egg carrying
 		// {id:"minecraft:pig",NoAI:1b} sends 100 followed by a compound holding
-		// only NoAI. That hoisting is what makes bees decodable too.
-		r.VarInt()
+		// only NoAI on 26.1, and thirty bytes of nbt with the id still inside
+		// on 1.21.4.
+		if enc, _ := v.ComponentEncoding(); !enc.EntityDataKeepsTypeInNBT {
+			r.VarInt()
+		}
 		return skipNBT(r)
 	default:
 		return skipShapedComponent(v, r, kind)
@@ -288,7 +291,7 @@ func skipComponent(v *protocol.Version, r *protocol.Reader, wire int32, into *It
 func skipShapedComponent(v *protocol.Version, r *protocol.Reader, kind int32) error {
 	switch kind {
 	case componentCanPlaceOn, componentCanBreak:
-		return skipBlockPredicates(r)
+		return skipBlockPredicates(v, r)
 	case componentTooltipDisplay:
 		// Whether to hide the tooltip entirely, then the components to leave
 		// out of it — by their own type ids, so `damage` arrives as a 3.
@@ -330,19 +333,19 @@ func skipShapedComponent(v *protocol.Version, r *protocol.Reader, kind int32) er
 		r.Skip(6 * 4)
 		return r.Err()
 	case componentEquippable:
-		return skipEquippable(r)
+		return skipEquippable(v, r)
 	case componentDeathProtection, componentGlider:
 		return skipDeathProtection(r, kind)
 	case componentBlocksAttacks:
 		return skipBlocksAttacks(r)
 	case componentBees:
-		return skipBees(r)
+		return skipBees(v, r)
 	case componentPiercingWeapon:
 		return skipPiercingWeapon(r)
 	case componentKineticWeapon:
 		return skipKineticWeapon(r)
 	case componentTrim:
-		return skipTrim(r)
+		return skipTrim(v, r)
 	case componentContainer:
 		return skipContainerContents(v, r)
 	case componentFireworkExplosion:
@@ -352,7 +355,7 @@ func skipShapedComponent(v *protocol.Version, r *protocol.Reader, kind int32) er
 	case componentLodestoneTracker:
 		return skipLodestoneTracker(r)
 	case componentProfile:
-		return skipProfile(r)
+		return skipProfile(v, r)
 	case componentWrittenBook:
 		return skipWrittenBook(r)
 	case componentLore:
@@ -450,7 +453,9 @@ func skipPotionContents(r *protocol.Reader, into *ItemStack) error {
 //
 // The state and component matchers are structures this cannot walk into, but
 // they are absent on anything a command or a plugin sets in the ordinary way.
-func skipBlockPredicates(r *protocol.Reader) error {
+func skipBlockPredicates(v *protocol.Version, r *protocol.Reader) error {
+	enc, _ := v.ComponentEncoding()
+	legacy := enc.LegacyBlockPredicates
 	for range r.VarInt() {
 		if r.Bool() {
 			readIDSet(r)
@@ -464,10 +469,16 @@ func skipBlockPredicates(r *protocol.Reader) error {
 				return err
 			}
 		}
+		if legacy {
+			continue // no component matchers on this version
+		}
 		if exact, partial := r.VarInt(), r.VarInt(); exact != 0 || partial != 0 {
 			return fmt.Errorf("block predicate matches %d exact and %d partial "+
 				"components, which cannot be skipped", exact, partial)
 		}
+	}
+	if legacy {
+		r.Bool() // show in tooltip, which later versions moved to tooltip_display
 	}
 	return r.Err()
 }
@@ -532,7 +543,7 @@ func skipTool(r *protocol.Reader) error {
 // Two samples: a bare {slot:"head"}, where every optional is absent, and one
 // setting the asset, the camera overlay and the entities allowed to wear it,
 // which is what shows those three are optionals rather than fixed fields.
-func skipEquippable(r *protocol.Reader) error {
+func skipEquippable(v *protocol.Version, r *protocol.Reader) error {
 	r.VarInt() // slot — head came back as 4
 	if err := skipHolder(r, "equip sound"); err != nil {
 		return err
@@ -545,6 +556,10 @@ func skipEquippable(r *protocol.Reader) error {
 	}
 	if r.Bool() {
 		readIDSet(r) // the entities that may wear it
+	}
+	if enc, _ := v.ComponentEncoding(); enc.EquippableHasNoShearing {
+		r.Skip(3) // dispensable, swappable, damage on hurt
+		return r.Err()
 	}
 	r.Skip(5) // dispensable, swappable, damage on hurt, equip on interact, shearable
 	return skipHolder(r, "shearing sound")
@@ -683,9 +698,12 @@ func skipKineticWeapon(r *protocol.Reader) error {
 // out, and the two tick counts. The leading type is the same hoisting
 // entity_data does, which is what made this readable: without it the 11 in
 // front of an empty compound looks like nothing at all.
-func skipBees(r *protocol.Reader) error {
+func skipBees(v *protocol.Version, r *protocol.Reader) error {
+	enc, _ := v.ComponentEncoding()
 	for range r.VarInt() {
-		r.VarInt() // entity type
+		if !enc.EntityDataKeepsTypeInNBT {
+			r.VarInt() // entity type
+		}
 		if err := skipNBT(r); err != nil {
 			return err
 		}
@@ -697,13 +715,19 @@ func skipBees(r *protocol.Reader) error {
 
 // skipTrim steps over an armour trim: two holders, the material and the
 // pattern. Gold and coast came back as 5 and 2 against registry indices 4 and
-// 1. Nothing else follows — the flag that used to show the trim in the tooltip
-// moved out into tooltip_display.
-func skipTrim(r *protocol.Reader) error {
+// 1. On 1.21.4 a show-in-tooltip bool follows; later versions moved it out into
+// tooltip_display.
+func skipTrim(v *protocol.Version, r *protocol.Reader) error {
 	if err := skipHolder(r, "trim material"); err != nil {
 		return err
 	}
-	return skipHolder(r, "trim pattern")
+	if err := skipHolder(r, "trim pattern"); err != nil {
+		return err
+	}
+	if enc, _ := v.ComponentEncoding(); enc.TrimHasTooltipFlag {
+		r.Bool()
+	}
+	return r.Err()
 }
 
 // skipNBTList steps over a count and that many nameless NBT tags.
@@ -965,7 +989,19 @@ func skipLodestoneTracker(r *protocol.Reader) error {
 // The four bytes at the end are zero on every head seen. They are read as four
 // absent optionals, which is the reading that fails loudly rather than
 // silently: a head that sets one stops the scan instead of desynchronising it.
-func skipProfile(r *protocol.Reader) error {
+func skipProfile(v *protocol.Version, r *protocol.Reader) error {
+	enc, _ := v.ComponentEncoding()
+	if enc.ProfileHasNoVariantTag {
+		// No discriminator: straight into the optional name, then the optional
+		// uuid, then the properties.
+		if r.Bool() {
+			_ = r.String()
+		}
+		if r.Bool() {
+			r.Skip(16)
+		}
+		return skipProfileProperties(r, false)
+	}
 	if r.VarInt() == 0 {
 		if r.Bool() {
 			_ = r.String() // name
@@ -977,12 +1013,21 @@ func skipProfile(r *protocol.Reader) error {
 		r.Skip(16)
 		_ = r.String()
 	}
+	return skipProfileProperties(r, true)
+}
+
+// skipProfileProperties steps over a profile's properties, and the trailing
+// fields that follow them on the versions that have any.
+func skipProfileProperties(r *protocol.Reader, trailing bool) error {
 	for range r.VarInt() {
 		_ = r.String() // property name
 		_ = r.String() // value
 		if r.Bool() {
 			_ = r.String() // signature
 		}
+	}
+	if !trailing {
+		return r.Err()
 	}
 	for i := range 4 {
 		if r.Bool() {

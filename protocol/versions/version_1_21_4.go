@@ -94,12 +94,24 @@ func v1_21_4() *protocol.Version {
 		ItemNames:    v1_21_4ItemNames,
 		ItemStacks:   v1_21_4ItemStacks,
 		ComponentIDs: v1_21_4ComponentIDs,
-		Shapes:       v1_21_4Shapes,
-		ShapeRuns:    v1_21_4ShapeRuns,
-		Solid:        v1_21_4Solid,
-		Water:        v1_21_4Water,
-		Lava:         v1_21_4Lava,
-		Air:          v1_21_4Air,
+		// Measured against a vanilla 1.21.4 server. It deviates from 26.1 in
+		// more ways than 1.21.11 does, and not a superset of them: registry
+		// references carry no leading flag here.
+		Components: &protocol.ComponentEncoding{
+			NestedStacksCountFirst:   true,
+			TagsAreBareStrings:       true,
+			EntityDataKeepsTypeInNBT: true,
+			LegacyBlockPredicates:    true,
+			EquippableHasNoShearing:  true,
+			TrimHasTooltipFlag:       true,
+			ProfileHasNoVariantTag:   true,
+		},
+		Shapes:    v1_21_4Shapes,
+		ShapeRuns: v1_21_4ShapeRuns,
+		Solid:     v1_21_4Solid,
+		Water:     v1_21_4Water,
+		Lava:      v1_21_4Lava,
+		Air:       v1_21_4Air,
 	})
 }
 

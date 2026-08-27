@@ -399,8 +399,36 @@ type ComponentEncoding struct {
 	// registry reference, which is 1 in every sample seen. Affects damage_type,
 	// instrument, jukebox_playable, provides_trim_material, chicken/variant and
 	// zombie_nautilus/variant — and no other reference, so break_sound, trim
-	// and banner_patterns are untouched.
+	// and banner_patterns are untouched. True on 1.21.11 and, notably, false on
+	// 1.21.4, so the older version is not simply "more of the same".
 	RegistryRefsHaveLeadingFlag bool
+
+	// EntityDataKeepsTypeInNBT: entity_data, bucket_entity_data,
+	// block_entity_data and the bees inside a hive carry their type inside the
+	// compound rather than hoisted in front of it. A pig spawn egg is 30 bytes
+	// of nbt on 1.21.4 and 11 with the type pulled out on 26.1.
+	EntityDataKeepsTypeInNBT bool
+
+	// LegacyBlockPredicates: can_place_on and can_break hold predicates that
+	// match on blocks, state and nbt only — no component matchers at all — and
+	// the list is followed by a show-in-tooltip bool, which later versions
+	// moved out into tooltip_display. A pickaxe restricted to dirt and stone is
+	// eight bytes here and nine on 26.1.
+	LegacyBlockPredicates bool
+
+	// EquippableHasNoShearing: equippable stops after three flags, without the
+	// equip-on-interact and shearable flags or the shearing sound that later
+	// versions add. Twelve bytes becomes nine.
+	EquippableHasNoShearing bool
+
+	// TrimHasTooltipFlag: an armour trim carries the show-in-tooltip bool that
+	// later versions moved out into tooltip_display.
+	TrimHasTooltipFlag bool
+
+	// ProfileHasNoVariantTag: a profile leads straight into its optional name
+	// rather than with the partial/resolved discriminator, so a head named
+	// Notch starts `01 05 Notch` rather than `00 01 05 Notch`.
+	ProfileHasNoVariantTag bool
 }
 
 // ComponentEncoding reports how this version encodes component payloads, and
