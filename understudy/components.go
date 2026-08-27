@@ -337,7 +337,7 @@ func skipShapedComponent(v *protocol.Version, r *protocol.Reader, kind int32) er
 	case componentDeathProtection, componentGlider:
 		return skipDeathProtection(r, kind)
 	case componentBlocksAttacks:
-		return skipBlocksAttacks(r)
+		return skipBlocksAttacks(v, r)
 	case componentBees:
 		return skipBees(v, r)
 	case componentPiercingWeapon:
@@ -573,7 +573,7 @@ func skipEquippable(v *protocol.Version, r *protocol.Reader) error {
 //
 // The reductions are a structure this cannot walk into and are empty on a
 // vanilla shield, whose blocking is described entirely by the numbers here.
-func skipBlocksAttacks(r *protocol.Reader) error {
+func skipBlocksAttacks(v *protocol.Version, r *protocol.Reader) error {
 	r.F32() // block delay seconds
 	r.F32() // disable cooldown scale
 	if n := r.VarInt(); n != 0 {
@@ -584,7 +584,15 @@ func skipBlocksAttacks(r *protocol.Reader) error {
 	r.F32() // base
 	r.F32() // factor
 	if r.Bool() {
-		_ = r.String() // the damage type tag that bypasses blocking
+		// A tag, written the same way damage_resistant writes one: wrapped in a
+		// holder set on 26.1 and bare on the older versions. Read as a plain
+		// string it consumed a zero-length name and lost eighteen bytes — which
+		// only showed up once a second sample actually set it.
+		if enc, _ := v.ComponentEncoding(); enc.TagsAreBareStrings {
+			_ = r.String()
+		} else {
+			readIDSet(r)
+		}
 	}
 	for _, what := range []string{"block sound", "disable sound"} {
 		if r.Bool() {
