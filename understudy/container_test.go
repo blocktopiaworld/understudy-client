@@ -35,12 +35,21 @@ func windowItemsPacket(v *protocol.Version, windowID, stateID int32, items []Ite
 }
 
 // openContainer drives a session to the point where a window is open.
+//
+// It waits for the open *counter* to advance rather than for "a window is
+// open", because with one already open the latter is true before the new
+// packet has been read — so the next assertion sees the previous window's
+// contents. That is the same trap awaitContainer avoids in the client, and it
+// showed up here as a test that passed alone and failed under load.
 func openContainer(t *testing.T, c *Client, s *fakeServer, id, kind int32) {
 	t.Helper()
+	before := c.window.Sequence()
 	if err := s.conn.WritePacket(openWindowPacket(c.v, id, kind, "Crafting Table")); err != nil {
 		t.Fatalf("WritePacket: %v", err)
 	}
-	waitFor(t, 2*time.Second, "the window to open", c.ContainerOpen)
+	waitFor(t, 2*time.Second, "the window to open", func() bool {
+		return c.window.Sequence() > before && c.ContainerOpen()
+	})
 }
 
 func TestOpenWindowIsTracked(t *testing.T) {

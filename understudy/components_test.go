@@ -54,17 +54,45 @@ func TestComponentsThatTestsActuallyMeet(t *testing.T) {
 		}},
 		{"map id", componentMapID, func(w *protocol.Writer) { w.VarInt(7) }},
 		{"custom name", componentCustomName, func(w *protocol.Writer) {
-			// A nameless NBT string, as the server sends.
-			w.U8(8).U8(0).U8(6)
-			for _, b := range []byte(`"Rock"`) {
-				w.U8(b)
-			}
+			nbtString(w, `"Rock"`)
 		}},
 		{"water bottle", componentPotionContents, func(w *protocol.Writer) {
 			w.Bool(true).VarInt(0).Bool(false).VarInt(0).VarInt(0)
 		}},
 		{"coloured potion", componentPotionContents, func(w *protocol.Writer) {
 			w.Bool(true).VarInt(0).Bool(true).I32(0x00ff0000).VarInt(0).VarInt(0)
+		}},
+
+		// The plugin-shaped ones. A server plugin's items routinely carry
+		// custom_data and lore, and repair_cost turns up on anything that has
+		// been through an anvil — including this client's own rename verb.
+		{"repair cost, one byte", componentRepairCost, func(w *protocol.Writer) { w.VarInt(3) }},
+		{"repair cost, two bytes", componentRepairCost, func(w *protocol.Writer) { w.VarInt(300) }},
+		{"max stack size", componentMaxStackSize, func(w *protocol.Writer) { w.VarInt(17) }},
+		{"max damage", componentMaxDamage, func(w *protocol.Writer) { w.VarInt(999) }},
+		{"rarity", componentRarity, func(w *protocol.Writer) { w.VarInt(3) }},
+		{"unbreakable, no payload", componentUnbreakable, func(w *protocol.Writer) {}},
+		{"dyed colour", componentDyedColor, func(w *protocol.Writer) { w.I32(10511680) }},
+		{"custom data", componentCustomData, func(w *protocol.Writer) {
+			// {a: 1} as a nameless compound.
+			w.U8(10).U8(3).U8(0).U8(1).U8('a').I32(1).U8(0)
+		}},
+		{"one line of lore", componentLore, func(w *protocol.Writer) {
+			w.VarInt(1)
+			nbtString(w, `"one"`)
+		}},
+		{"three lines of lore", componentLore, func(w *protocol.Writer) {
+			w.VarInt(3)
+			for _, line := range []string{`"one"`, `"two"`, `"three"`} {
+				nbtString(w, line)
+			}
+		}},
+		{"item name", componentItemName, func(w *protocol.Writer) { nbtString(w, `"Named"`) }},
+		{"custom model data", componentCustomModelData, func(w *protocol.Writer) {
+			w.VarInt(1).F32(1.0). // one float
+						VarInt(0). // no flags
+						VarInt(0). // no strings
+						VarInt(0)  // no colours
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -73,6 +101,15 @@ func TestComponentsThatTestsActuallyMeet(t *testing.T) {
 				t.Errorf("item = %+v, want a single item decoded", item)
 			}
 		})
+	}
+}
+
+// nbtString writes a nameless NBT string, which is how every text component
+// in an item's data arrives.
+func nbtString(w *protocol.Writer, s string) {
+	w.U8(8).U8(byte(len(s) >> 8)).U8(byte(len(s)))
+	for _, b := range []byte(s) {
+		w.U8(b)
 	}
 }
 

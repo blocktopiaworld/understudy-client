@@ -28,15 +28,26 @@ import (
 // a reading is right is that the whole packet then decodes and lands on its
 // final byte — a wrong width anywhere leaves the remainder as nonsense.
 //
-// Only the components that actually turn up in testing are here. The right
-// answer for anything else is still to stop and say so.
+// Only the components that actually turn up in testing are here — thirteen of
+// the eighty-one that exist. The right answer for anything else is still to
+// stop and say so, now with the name attached: see component_names.go.
 
 // Component type ids, as observed on 26.1.
 const (
+	componentCustomData         = 0
+	componentMaxStackSize       = 1
+	componentMaxDamage          = 2
 	componentDamage             = 3
+	componentUnbreakable        = 4
 	componentCustomName         = 6
+	componentItemName           = 9
+	componentLore               = 11
+	componentRarity             = 12
 	componentEnchantments       = 13
+	componentCustomModelData    = 17
+	componentRepairCost         = 19
 	componentStoredEnchantments = 42
+	componentDyedColor          = 44
 	componentMapID              = 46
 	componentPotionContents     = 51
 	componentStewEffects        = 53
@@ -50,28 +61,52 @@ func skipComponent(v *protocol.Version, r *protocol.Reader, kind int32, into *It
 	switch kind {
 	case componentPotionContents:
 		return skipPotionContents(r, into)
-	case componentDamage:
-		// A single VarInt. Confirmed with two picks damaged 37 and 1000, which
-		// encode one byte and two — the case a single sample cannot show.
+	case componentUnbreakable:
+		// No payload at all — the component's presence is the whole meaning.
+		return nil
+	case componentDamage, componentMaxStackSize, componentMaxDamage,
+		componentRarity, componentRepairCost, componentMapID:
+		// Each a single VarInt. Confirmed with two samples apiece where the
+		// value crosses the one-to-two byte boundary: damage 37 and 1000,
+		// repair cost 3 and 300.
 		//
-		// This is the component that matters most: any tool that has been used
+		// damage is the one that matters most. Any tool that has been used
 		// carries it, so before this was handled a bot went blind to its own
-		// inventory the moment it mined anything.
+		// inventory the moment it mined anything — and repair_cost is the same
+		// story for anything that has been through an anvil.
 		r.VarInt()
 		return r.Err()
-	case componentCustomName:
-		// A nameless NBT tag — the same text component a window title carries,
-		// so the existing walker steps over it.
-		n, err := nbt.SkipTag(r.Remaining())
-		if err != nil {
-			return fmt.Errorf("custom name: %w", err)
+	case componentDyedColor:
+		// A packed 32-bit colour. 0x00a06540 came back as the 10511680 set.
+		r.I32()
+		return r.Err()
+	case componentCustomData, componentCustomName, componentItemName:
+		// A nameless NBT tag. custom_data is a whole compound, the two names
+		// are text components — all three step with the same walker.
+		return skipNBT(r)
+	case componentLore:
+		// A count, then that many NBT text components. Confirmed with one line
+		// and with three.
+		for range r.VarInt() {
+			if err := skipNBT(r); err != nil {
+				return err
+			}
 		}
-		r.Skip(n)
 		return r.Err()
-	case componentMapID:
-		// A single VarInt. Confirmed with two maps whose ids were chosen: they
-		// decoded as 7 and 9 and sat exactly seven bytes apart.
-		r.VarInt()
+	case componentCustomModelData:
+		// Four lists: floats, flags, strings and colours.
+		for range r.VarInt() {
+			r.F32()
+		}
+		for range r.VarInt() {
+			r.Bool()
+		}
+		for range r.VarInt() {
+			_ = r.String()
+		}
+		for range r.VarInt() {
+			r.I32()
+		}
 		return r.Err()
 	case componentEnchantments, componentStoredEnchantments, componentStewEffects:
 		// All three are the same shape: a count, then that many pairs of
@@ -83,7 +118,7 @@ func skipComponent(v *protocol.Version, r *protocol.Reader, kind int32, into *It
 		// width that happened to fit.
 		return skipVarIntPairs(r)
 	default:
-		return fmt.Errorf("data component %d has no known encoding", kind)
+		return fmt.Errorf("data component %s has no known encoding", componentName(kind))
 	}
 }
 
@@ -146,5 +181,15 @@ func skipVarIntPairs(r *protocol.Reader) error {
 		r.VarInt()
 		r.VarInt()
 	}
+	return r.Err()
+}
+
+// skipNBT steps over one nameless NBT tag in the reader.
+func skipNBT(r *protocol.Reader) error {
+	n, err := nbt.SkipTag(r.Remaining())
+	if err != nil {
+		return fmt.Errorf("nbt payload: %w", err)
+	}
+	r.Skip(n)
 	return r.Err()
 }
