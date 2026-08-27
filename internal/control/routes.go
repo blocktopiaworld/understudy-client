@@ -62,6 +62,21 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle("POST /container/button", handle(s, s.containerButton))
 	mux.Handle("POST /container/craft", handle(s, s.containerCraft))
 	mux.Handle("POST /container/grid", handle(s, s.containerGrid))
+	mux.Handle("POST /container/put", handle(s, s.containerPut))
+	mux.Handle("POST /container/clear", handle(s, s.containerClear))
+	mux.Handle("POST /container/deposit", handle(s, s.containerDeposit))
+	mux.Handle("POST /container/withdraw", handle(s, s.containerWithdraw))
+
+	// Workstations. Each is its window's layout, so the caller names items
+	// rather than slot numbers.
+	mux.Handle("POST /smelt", handle(s, s.smelt))
+	mux.Handle("POST /rename", handle(s, s.rename))
+	mux.Handle("POST /anvil", handle(s, s.anvilCombine))
+	mux.Handle("POST /loom", handle(s, s.loom))
+	mux.Handle("POST /grindstone", handle(s, s.grindstone))
+	mux.Handle("POST /smith", handle(s, s.smith))
+	mux.Handle("POST /enchant", handle(s, s.enchant))
+	mux.Handle("POST /brew", handle(s, s.brew))
 	mux.Handle("POST /container/trade", handle(s, s.containerTrade))
 	return mux
 }
@@ -662,6 +677,8 @@ func (s *Server) handleContainer(w http.ResponseWriter, _ *http.Request) {
 		"type":      s.bot.ContainerKind(),
 		"title":     s.bot.ContainerTitle(),
 		"size":      len(slots),
+		"own_slots": s.bot.ContainerOwnSlots(),
+		"kind":      s.bot.ContainerType().String(),
 		"items":     out,
 		"truncated": s.bot.ContainerTruncated(),
 	})
@@ -797,4 +814,158 @@ func slotLayout(in map[string]string) (map[int]string, error) {
 		out[slot] = v
 	}
 	return out, nil
+}
+
+// --- slot moves and storage -------------------------------------------------
+
+func (s *Server) containerPut(ctx context.Context, in struct {
+	Item string `json:"item"`
+	Slot int    `json:"slot"`
+	One  bool   `json:"one"`
+}) (body, error) {
+	move := s.bot.PutIntoSlot
+	if in.One {
+		move = s.bot.PutOneIntoSlot
+	}
+	item, err := move(ctx, in.Item, in.Slot)
+	if err != nil {
+		return nil, err
+	}
+	return body{"slot": in.Slot, "item": item.Name, "count": item.Count}, nil
+}
+
+func (s *Server) containerClear(ctx context.Context, _ struct{}) (body, error) {
+	return nil, s.bot.ClearContainerInputs(ctx)
+}
+
+// containerDeposit reports what actually moved, not what was asked for: a full
+// container accepts the click and silently keeps the remainder.
+func (s *Server) containerDeposit(ctx context.Context, in struct {
+	Item  string `json:"item"`
+	Count int32  `json:"count"`
+	All   bool   `json:"all"`
+}) (body, error) {
+	if in.All {
+		stacks, err := s.bot.DepositAll(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return body{"stacks": stacks}, nil
+	}
+	moved, err := s.bot.Deposit(ctx, in.Item, in.Count)
+	if err != nil {
+		return nil, err
+	}
+	return body{"moved": moved, "requested": in.Count, "in_container": s.bot.CountInContainerOnly(in.Item)}, nil
+}
+
+func (s *Server) containerWithdraw(ctx context.Context, in struct {
+	Item  string `json:"item"`
+	Count int32  `json:"count"`
+}) (body, error) {
+	moved, err := s.bot.Withdraw(ctx, in.Item, in.Count)
+	if err != nil {
+		return nil, err
+	}
+	return body{"moved": moved, "requested": in.Count, "left_in_container": s.bot.CountInContainerOnly(in.Item)}, nil
+}
+
+// --- workstations -----------------------------------------------------------
+
+func (s *Server) smelt(ctx context.Context, in struct {
+	Input string `json:"input"`
+	Fuel  string `json:"fuel"`
+	Count int    `json:"count"`
+}) (body, error) {
+	if in.Fuel == "" {
+		in.Fuel = "minecraft:coal"
+	}
+	item, err := s.bot.Smelt(ctx, in.Input, in.Fuel, in.Count)
+	if err != nil {
+		return nil, err
+	}
+	return body{"item": item.Name, "count": item.Count}, nil
+}
+
+func (s *Server) rename(ctx context.Context, in struct {
+	Item string `json:"item"`
+	Name string `json:"name"`
+}) (body, error) {
+	item, err := s.bot.RenameItem(ctx, in.Item, in.Name)
+	if err != nil {
+		return nil, err
+	}
+	return body{"item": item.Name, "count": item.Count, "renamed_to": in.Name}, nil
+}
+
+func (s *Server) anvilCombine(ctx context.Context, in struct {
+	First  string `json:"first"`
+	Second string `json:"second"`
+}) (body, error) {
+	item, err := s.bot.CombineInAnvil(ctx, in.First, in.Second)
+	if err != nil {
+		return nil, err
+	}
+	return body{"item": item.Name, "count": item.Count}, nil
+}
+
+func (s *Server) loom(ctx context.Context, in struct {
+	Banner  string `json:"banner"`
+	Dye     string `json:"dye"`
+	Pattern string `json:"pattern_item"`
+	Index   int32  `json:"index"`
+}) (body, error) {
+	item, err := s.bot.ApplyBannerPattern(ctx, in.Banner, in.Dye, in.Pattern, in.Index)
+	if err != nil {
+		return nil, err
+	}
+	return body{"item": item.Name, "count": item.Count}, nil
+}
+
+func (s *Server) grindstone(ctx context.Context, in struct {
+	Item string `json:"item"`
+}) (body, error) {
+	item, err := s.bot.Disenchant(ctx, in.Item)
+	if err != nil {
+		return nil, err
+	}
+	return body{"item": item.Name, "count": item.Count}, nil
+}
+
+func (s *Server) smith(ctx context.Context, in struct {
+	Template string `json:"template"`
+	Base     string `json:"base"`
+	Addition string `json:"addition"`
+}) (body, error) {
+	item, err := s.bot.UpgradeInSmithingTable(ctx, in.Template, in.Base, in.Addition)
+	if err != nil {
+		return nil, err
+	}
+	return body{"item": item.Name, "count": item.Count}, nil
+}
+
+func (s *Server) enchant(ctx context.Context, in struct {
+	Item  string `json:"item"`
+	Level int32  `json:"level"`
+}) (body, error) {
+	item, err := s.bot.Enchant(ctx, in.Item, in.Level)
+	if err != nil {
+		return nil, err
+	}
+	return body{"item": item.Name, "count": item.Count}, nil
+}
+
+func (s *Server) brew(ctx context.Context, in struct {
+	Bottle     string `json:"bottle"`
+	Ingredient string `json:"ingredient"`
+	Fuel       string `json:"fuel"`
+	Count      int    `json:"count"`
+}) (body, error) {
+	if in.Bottle == "" {
+		in.Bottle = "minecraft:potion"
+	}
+	if in.Fuel == "" {
+		in.Fuel = "minecraft:blaze_powder"
+	}
+	return nil, s.bot.Brew(ctx, in.Bottle, in.Ingredient, in.Fuel, in.Count)
 }

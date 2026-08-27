@@ -375,3 +375,9 @@ func (c *Client) handleCollect(p protocol.Packet) error {
 	c.log.Debug("picked up", "count", count, "entity", collected)
 	return nil
 }
+
+// matchesName applies the package's item-name matching to a stack: an exact
+// namespaced match, or a loose suffix one so "planks" finds "oak_planks".
+func matchesName(item ItemStack, name string) (exact, fuzzy bool) {
+	return inventory.Matches(item, name)
+}

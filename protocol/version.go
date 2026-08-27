@@ -53,6 +53,7 @@ type PacketIDs struct {
 	SBPlaySelectTrade        int32
 	SBPlayCraftRecipeRequest int32
 	SBPlayContainerButton    int32
+	SBPlayNameItem           int32
 	SBPlaySetCreativeSlot    int32
 	SBPlayPlayerInput        int32
 	SBPlayEntityAction       int32

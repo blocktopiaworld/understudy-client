@@ -424,3 +424,133 @@ func (b *stubBot) TradeAndTake(ctx context.Context, index int32, times int) (int
 	}
 	return times, nil
 }
+
+// --- window shape, slot moves, storage, workstations ---
+
+func (b *stubBot) ContainerType() understudy.WindowType { return understudy.WindowType(b.windowKind) }
+func (b *stubBot) ContainerOwnSlots() int {
+	if len(b.windowSlots) <= understudy.PlayerWindowSlots {
+		return 0
+	}
+	return len(b.windowSlots) - understudy.PlayerWindowSlots
+}
+func (b *stubBot) ContainerContents() []understudy.ItemStack { return b.windowSlots }
+func (b *stubBot) CountInContainerOnly(name string) int32    { return 7 }
+
+func (b *stubBot) PutIntoSlot(ctx context.Context, name string, slot int) (understudy.ItemStack, error) {
+	b.record("PutIntoSlot:" + name)
+	b.lastDig = [3]int32{int32(slot), 0, 0}
+	if b.err != nil {
+		return understudy.ItemStack{}, b.err
+	}
+	return understudy.ItemStack{Slot: slot, Name: protocol.Namespaced(name), Count: 1}, nil
+}
+
+func (b *stubBot) PutOneIntoSlot(ctx context.Context, name string, slot int) (understudy.ItemStack, error) {
+	b.record("PutOneIntoSlot:" + name)
+	return b.PutIntoSlot(ctx, name, slot)
+}
+
+func (b *stubBot) TakeSlot(ctx context.Context, slot int, timeout time.Duration) (understudy.ItemStack, error) {
+	b.record("TakeSlot")
+	if b.err != nil {
+		return understudy.ItemStack{}, b.err
+	}
+	return understudy.ItemStack{Slot: slot, Name: "minecraft:iron_ingot", Count: 1}, nil
+}
+
+func (b *stubBot) ClearContainerInputs(ctx context.Context) error {
+	b.record("ClearContainerInputs")
+	return b.err
+}
+
+func (b *stubBot) Deposit(ctx context.Context, name string, count int32) (int32, error) {
+	b.record("Deposit:" + name)
+	if b.err != nil {
+		return 0, b.err
+	}
+	// Model a container that fills up, which is the case worth reporting.
+	if count > 10 {
+		return 10, nil
+	}
+	return count, nil
+}
+
+func (b *stubBot) Withdraw(ctx context.Context, name string, count int32) (int32, error) {
+	b.record("Withdraw:" + name)
+	if b.err != nil {
+		return 0, b.err
+	}
+	return count, nil
+}
+
+func (b *stubBot) DepositAll(ctx context.Context) (int, error) {
+	b.record("DepositAll")
+	if b.err != nil {
+		return 0, b.err
+	}
+	return 3, nil
+}
+
+func (b *stubBot) Smelt(ctx context.Context, input, fuel string, count int) (understudy.ItemStack, error) {
+	b.record("Smelt:" + input + "/" + fuel)
+	if b.err != nil {
+		return understudy.ItemStack{}, b.err
+	}
+	return understudy.ItemStack{Name: "minecraft:iron_ingot", Count: int32(max(count, 1))}, nil
+}
+
+func (b *stubBot) RenameItem(ctx context.Context, item, newName string) (understudy.ItemStack, error) {
+	b.record("RenameItem:" + newName)
+	if b.err != nil {
+		return understudy.ItemStack{}, b.err
+	}
+	return understudy.ItemStack{Name: protocol.Namespaced(item), Count: 1}, nil
+}
+
+func (b *stubBot) CombineInAnvil(ctx context.Context, first, second string) (understudy.ItemStack, error) {
+	b.record("CombineInAnvil")
+	if b.err != nil {
+		return understudy.ItemStack{}, b.err
+	}
+	return understudy.ItemStack{Name: protocol.Namespaced(first), Count: 1}, nil
+}
+
+func (b *stubBot) ApplyBannerPattern(ctx context.Context, banner, dye, patternItem string, pattern int32) (understudy.ItemStack, error) {
+	b.record("ApplyBannerPattern")
+	b.lastButton = pattern
+	if b.err != nil {
+		return understudy.ItemStack{}, b.err
+	}
+	return understudy.ItemStack{Name: protocol.Namespaced(banner), Count: 1}, nil
+}
+
+func (b *stubBot) Disenchant(ctx context.Context, item string) (understudy.ItemStack, error) {
+	b.record("Disenchant")
+	if b.err != nil {
+		return understudy.ItemStack{}, b.err
+	}
+	return understudy.ItemStack{Name: protocol.Namespaced(item), Count: 1}, nil
+}
+
+func (b *stubBot) UpgradeInSmithingTable(ctx context.Context, template, base, addition string) (understudy.ItemStack, error) {
+	b.record("UpgradeInSmithingTable")
+	if b.err != nil {
+		return understudy.ItemStack{}, b.err
+	}
+	return understudy.ItemStack{Name: "minecraft:netherite_pickaxe", Count: 1}, nil
+}
+
+func (b *stubBot) Enchant(ctx context.Context, item string, level int32) (understudy.ItemStack, error) {
+	b.record("Enchant")
+	b.lastButton = level
+	if b.err != nil {
+		return understudy.ItemStack{}, b.err
+	}
+	return understudy.ItemStack{Name: protocol.Namespaced(item), Count: 1}, nil
+}
+
+func (b *stubBot) Brew(ctx context.Context, bottle, ingredient, fuel string, count int) error {
+	b.record("Brew:" + ingredient)
+	return b.err
+}

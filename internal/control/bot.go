@@ -112,6 +112,31 @@ type Bot interface {
 	SelectTrade(index int32) error
 	Trade(ctx context.Context, index int32) (understudy.ItemStack, error)
 	TradeAndTake(ctx context.Context, index int32, times int) (int, error)
+
+	// window shape and slot moves
+	ContainerType() understudy.WindowType
+	ContainerOwnSlots() int
+	ContainerContents() []understudy.ItemStack
+	CountInContainerOnly(name string) int32
+	PutIntoSlot(ctx context.Context, name string, slot int) (understudy.ItemStack, error)
+	PutOneIntoSlot(ctx context.Context, name string, slot int) (understudy.ItemStack, error)
+	TakeSlot(ctx context.Context, slot int, timeout time.Duration) (understudy.ItemStack, error)
+	ClearContainerInputs(ctx context.Context) error
+
+	// storage
+	Deposit(ctx context.Context, name string, count int32) (int32, error)
+	Withdraw(ctx context.Context, name string, count int32) (int32, error)
+	DepositAll(ctx context.Context) (int, error)
+
+	// workstations
+	Smelt(ctx context.Context, input, fuel string, count int) (understudy.ItemStack, error)
+	RenameItem(ctx context.Context, item, newName string) (understudy.ItemStack, error)
+	CombineInAnvil(ctx context.Context, first, second string) (understudy.ItemStack, error)
+	ApplyBannerPattern(ctx context.Context, banner, dye, patternItem string, pattern int32) (understudy.ItemStack, error)
+	Disenchant(ctx context.Context, item string) (understudy.ItemStack, error)
+	UpgradeInSmithingTable(ctx context.Context, template, base, addition string) (understudy.ItemStack, error)
+	Enchant(ctx context.Context, item string, level int32) (understudy.ItemStack, error)
+	Brew(ctx context.Context, bottle, ingredient, fuel string, count int) error
 	ShootAt(ctx context.Context, x, y, z float64, draw time.Duration) error
 	ShootBlock(ctx context.Context, x, y, z int32, draw time.Duration) error
 	ShootNearest(ctx context.Context, typeName string, draw time.Duration) (understudy.Entity, error)

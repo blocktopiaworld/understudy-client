@@ -76,6 +76,7 @@ const PACKETS = [
   ['SBPlaySelectTrade', 'play', 'toServer', 'select_trade'],
   ['SBPlayCraftRecipeRequest', 'play', 'toServer', 'craft_recipe_request'],
   ['SBPlayContainerButton', 'play', 'toServer', 'enchant_item'],
+  ['SBPlayNameItem', 'play', 'toServer', 'name_item'],
   ['SBPlaySetCreativeSlot', 'play', 'toServer', 'set_creative_slot'],
   ['SBPlayPlayerInput', 'play', 'toServer', 'player_input'],
   ['SBPlayEntityAction', 'play', 'toServer', 'entity_action'],
