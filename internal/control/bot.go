@@ -93,6 +93,25 @@ type Bot interface {
 	Consume(ctx context.Context) error
 	ConsumeItem(ctx context.Context, name string) (understudy.ItemStack, error)
 	CraftIn2x2(ctx context.Context, layout map[int]string) (understudy.ItemStack, error)
+
+	// containers: crafting tables, smithing tables, stonecutters, villagers
+	OpenContainer(ctx context.Context, x, y, z, face int32) error
+	OpenContainerOnNearest(ctx context.Context, typeName string) (understudy.Entity, error)
+	CloseContainer() error
+	ContainerOpen() bool
+	ContainerID() int32
+	ContainerKind() int32
+	ContainerTitle() string
+	ContainerSlots() []understudy.ItemStack
+	ContainerTruncated() bool
+	ClickContainerSlot(slot int, button int8, mode int32) error
+	TakeFromContainer(slot int) error
+	ClickContainerButton(button int32) error
+	CraftRecipe(recipeID int32, all bool) error
+	CraftInGrid(ctx context.Context, layout map[int]string, repeat int) (understudy.ItemStack, error)
+	SelectTrade(index int32) error
+	Trade(ctx context.Context, index int32) (understudy.ItemStack, error)
+	TradeAndTake(ctx context.Context, index int32, times int) (int, error)
 	ShootAt(ctx context.Context, x, y, z float64, draw time.Duration) error
 	ShootBlock(ctx context.Context, x, y, z int32, draw time.Duration) error
 	ShootNearest(ctx context.Context, typeName string, draw time.Duration) (understudy.Entity, error)

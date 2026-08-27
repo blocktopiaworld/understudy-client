@@ -76,6 +76,14 @@ func testVersion(t *testing.T) *protocol.Version {
 // newTestClient builds a Client with no connection, for the logic that does
 // not touch the socket. Anything that writes a packet needs the fake server in
 // session_test.go instead.
+// newTestClient builds a Client with no connection, for testing anything that
+// does not put bytes on a wire.
+//
+// There are two of these — this and newSession — because one needs a socket and
+// the other must not have one. They have to agree about the model fields, and
+// twice now a new one (window) was added to only one, which shows up as a nil
+// dereference deep inside an unrelated test. TestClientBuildersAgree keeps them
+// honest.
 func newTestClient(t *testing.T) *Client {
 	t.Helper()
 	return &Client{
@@ -86,6 +94,7 @@ func newTestClient(t *testing.T) *Client {
 		entities: entities.New(),
 		world:    world.New(),
 		inv:      inventory.New(),
+		window:   inventory.NewContainer(),
 		state:    protocol.StatePlay,
 	}
 }
@@ -155,4 +164,31 @@ func ids(list []Entity) []int32 {
 		out = append(out, e.ID)
 	}
 	return out
+}
+
+// Both test Client builders must initialise every model field. A field set in
+// one and missed in the other fails as a nil pointer somewhere unrelated,
+// which is a long way from the mistake.
+func TestClientBuildersAgree(t *testing.T) {
+	bare := newTestClient(t)
+	wired, _ := newSession(t)
+
+	for _, tc := range []struct {
+		name string
+		got  func(*Client) bool
+	}{
+		{"entities", func(c *Client) bool { return c.entities != nil }},
+		{"world", func(c *Client) bool { return c.world != nil }},
+		{"inv", func(c *Client) bool { return c.inv != nil }},
+		{"window", func(c *Client) bool { return c.window != nil }},
+		{"version", func(c *Client) bool { return c.v != nil }},
+		{"log", func(c *Client) bool { return c.log != nil }},
+	} {
+		if !tc.got(bare) {
+			t.Errorf("newTestClient left %s nil", tc.name)
+		}
+		if !tc.got(wired) {
+			t.Errorf("newSession left %s nil", tc.name)
+		}
+	}
 }

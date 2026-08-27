@@ -53,6 +53,7 @@ func newSession(t *testing.T) (*Client, *fakeServer) {
 		entities: entities.New(),
 		world:    world.New(),
 		inv:      inventory.New(),
+		window:   inventory.NewContainer(),
 		conn:     protocol.NewConn(clientSide),
 		state:    protocol.StatePlay,
 	}

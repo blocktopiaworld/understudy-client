@@ -50,6 +50,9 @@ type PacketIDs struct {
 	SBPlayBlockPlace         int32
 	SBPlayWindowClick        int32
 	SBPlayCloseWindow        int32
+	SBPlaySelectTrade        int32
+	SBPlayCraftRecipeRequest int32
+	SBPlayContainerButton    int32
 	SBPlaySetCreativeSlot    int32
 	SBPlayPlayerInput        int32
 	SBPlayEntityAction       int32
@@ -75,6 +78,7 @@ type PacketIDs struct {
 	CBPlayWindowItems        int32
 	CBPlaySetSlot            int32
 	CBPlayOpenWindow         int32
+	CBPlayCloseWindow        int32
 	CBPlayHeldItemSlot       int32
 	CBPlayCollect            int32
 	CBPlayChunkBatchStart    int32

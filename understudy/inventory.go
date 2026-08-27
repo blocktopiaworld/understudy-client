@@ -290,12 +290,19 @@ func (c *Client) handleWindowItems(p protocol.Packet) error {
 	if err := r.Err(); err != nil {
 		return err
 	}
-	c.inv.SetStateID(stateID)
-	if windowID != PlayerWindowID {
-		return nil // a chest or similar; not tracked
-	}
 	if n < 0 || n > maxWindowSlots {
 		return fmt.Errorf("understudy: implausible window slot count %d", n)
+	}
+	// A container's contents arrive on its own window ID, and its state counter
+	// is the one its clicks must echo — mixing the two up means every click
+	// carries a stale state and the server silently resyncs instead of acting.
+	toContainer := c.window.Matches(windowID)
+	if toContainer {
+		c.window.SetStateID(stateID)
+	} else if windowID == PlayerWindowID {
+		c.inv.SetStateID(stateID)
+	} else {
+		return nil // a window we are not tracking
 	}
 
 	items := make([]ItemStack, 0, n)
@@ -313,6 +320,10 @@ func (c *Client) handleWindowItems(p protocol.Packet) error {
 		item.Slot = int(i)
 		items = append(items, item)
 	}
+	if toContainer {
+		c.window.ReplaceAll(items, truncated)
+		return nil
+	}
 	c.inv.ReplaceAll(items, truncated)
 	return nil
 }
@@ -325,8 +336,12 @@ func (c *Client) handleSetSlot(p protocol.Packet) error {
 	if err := r.Err(); err != nil {
 		return err
 	}
-	c.inv.SetStateID(stateID)
-	if windowID != PlayerWindowID {
+	toContainer := c.window.Matches(windowID)
+	if toContainer {
+		c.window.SetStateID(stateID)
+	} else if windowID == PlayerWindowID {
+		c.inv.SetStateID(stateID)
+	} else {
 		return nil
 	}
 	// The item is the final field, so components need not be skipped.
@@ -336,6 +351,10 @@ func (c *Client) handleSetSlot(p protocol.Packet) error {
 		return nil
 	}
 	item.Slot = int(slot)
+	if toContainer {
+		c.window.SetSlot(int(slot), item)
+		return nil
+	}
 	c.inv.SetSlot(int(slot), item)
 	return nil
 }

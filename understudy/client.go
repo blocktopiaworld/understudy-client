@@ -133,6 +133,7 @@ type Client struct {
 	entities *entities.Tracker
 	world    *world.World
 	inv      *inventory.Inventory
+	window   *inventory.Container
 	// v holds every version-specific detail: packet IDs, entity and block
 	// tables, and the chunk framing flags. Resolved during Connect, since
 	// auto-detection needs a round trip to the server, and read-only after.
@@ -209,6 +210,7 @@ func New(opts Options) (*Client, error) {
 		entities: entities.New(),
 		world:    world.New(),
 		inv:      inventory.New(),
+		window:   inventory.NewContainer(),
 	}, nil
 }
 
@@ -332,6 +334,7 @@ func (c *Client) dispatch(ctx context.Context, p protocol.Packet) (bool, error) 
 		c.handleEntityPacket,
 		c.handleWorldPacket,
 		c.handleInventoryPacket,
+		c.handleContainerPacket,
 	} {
 		if handled, err := handle(p); err != nil || handled {
 			return handled, err

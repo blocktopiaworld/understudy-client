@@ -52,6 +52,17 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle("POST /dig", handle(s, s.dig))
 	mux.Handle("POST /place", handle(s, s.place))
 	mux.Handle("POST /use", handle(s, s.use))
+
+	// Container UIs: crafting tables, smithing tables, stonecutters, villagers.
+	mux.HandleFunc("GET /container", s.handleContainer)
+	mux.Handle("POST /container/open", handle(s, s.containerOpen))
+	mux.Handle("POST /container/close", handle(s, s.containerClose))
+	mux.Handle("POST /container/click", handle(s, s.containerClick))
+	mux.Handle("POST /container/take", handle(s, s.containerTake))
+	mux.Handle("POST /container/button", handle(s, s.containerButton))
+	mux.Handle("POST /container/craft", handle(s, s.containerCraft))
+	mux.Handle("POST /container/grid", handle(s, s.containerGrid))
+	mux.Handle("POST /container/trade", handle(s, s.containerTrade))
 	return mux
 }
 
@@ -478,16 +489,9 @@ func (s *Server) shoot(ctx context.Context, in struct {
 func (s *Server) craft(ctx context.Context, in struct {
 	Layout map[string]string `json:"layout"`
 }) (body, error) {
-	if len(in.Layout) == 0 {
-		return nil, invalidf("craft: layout is required, mapping grid slot 1..4 to an item")
-	}
-	layout := make(map[int]string, len(in.Layout))
-	for k, v := range in.Layout {
-		slot, err := strconv.Atoi(k)
-		if err != nil {
-			return nil, invalidf("craft: bad grid slot %q", k)
-		}
-		layout[slot] = v
+	layout, err := slotLayout(in.Layout)
+	if err != nil {
+		return nil, err
 	}
 	result, err := s.bot.CraftIn2x2(ctx, layout)
 	if err != nil {
@@ -634,4 +638,163 @@ func sleepCtx(ctx context.Context, d time.Duration) error {
 	case <-timer.C:
 		return nil
 	}
+}
+
+// --- containers -------------------------------------------------------------
+
+// handleContainer reports the open window, if any.
+func (s *Server) handleContainer(w http.ResponseWriter, _ *http.Request) {
+	if !s.bot.ContainerOpen() {
+		s.writeJSON(w, http.StatusOK, body{"open": false})
+		return
+	}
+	slots := s.bot.ContainerSlots()
+	out := make([]body, 0, len(slots))
+	for _, it := range slots {
+		if it.Empty() {
+			continue
+		}
+		out = append(out, body{"slot": it.Slot, "item": it.Name, "count": it.Count})
+	}
+	s.writeJSON(w, http.StatusOK, body{
+		"open":      true,
+		"window_id": s.bot.ContainerID(),
+		"type":      s.bot.ContainerKind(),
+		"title":     s.bot.ContainerTitle(),
+		"size":      len(slots),
+		"items":     out,
+		"truncated": s.bot.ContainerTruncated(),
+	})
+}
+
+// containerOpen right-clicks a block, or the nearest entity of a type, and
+// waits for its UI. A block that is not a container never opens one, so this
+// reports a timeout rather than hanging.
+func (s *Server) containerOpen(ctx context.Context, in struct {
+	X, Y, Z int32
+	Face    *int32 `json:"face"`
+	Type    string `json:"type"`
+}) (body, error) {
+	if in.Type != "" {
+		target, err := s.bot.OpenContainerOnNearest(ctx, in.Type)
+		if err != nil {
+			return nil, err
+		}
+		return body{
+			"window_id": s.bot.ContainerID(), "type": s.bot.ContainerKind(),
+			"title": s.bot.ContainerTitle(), "size": len(s.bot.ContainerSlots()),
+			"target_id": target.ID, "target_type": target.TypeName,
+		}, nil
+	}
+	face, err := blockFace(in.Face)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.bot.OpenContainer(ctx, in.X, in.Y, in.Z, face); err != nil {
+		return nil, err
+	}
+	return body{
+		"window_id": s.bot.ContainerID(), "type": s.bot.ContainerKind(),
+		"title": s.bot.ContainerTitle(), "size": len(s.bot.ContainerSlots()),
+	}, nil
+}
+
+func (s *Server) containerClose(_ context.Context, _ struct{}) (body, error) {
+	return nil, s.bot.CloseContainer()
+}
+
+func (s *Server) containerClick(_ context.Context, in struct {
+	Slot   int   `json:"slot"`
+	Button int8  `json:"button"`
+	Mode   int32 `json:"mode"`
+}) (body, error) {
+	return nil, s.bot.ClickContainerSlot(in.Slot, in.Button, in.Mode)
+}
+
+// containerTake shift-clicks a slot, which is what empties a crafting result
+// including every repeat the ingredients allowed.
+func (s *Server) containerTake(_ context.Context, in struct {
+	Slot int `json:"slot"`
+}) (body, error) {
+	return nil, s.bot.TakeFromContainer(in.Slot)
+}
+
+// containerButton presses a numbered button — how a stonecutter or loom picks
+// a recipe.
+func (s *Server) containerButton(_ context.Context, in struct {
+	Button int32 `json:"button"`
+}) (body, error) {
+	return nil, s.bot.ClickContainerButton(in.Button)
+}
+
+// containerCraft asks the server to lay out a recipe from its own recipe book,
+// rather than the caller placing ingredients slot by slot. all:true repeats
+// until the ingredients run out.
+func (s *Server) containerCraft(_ context.Context, in struct {
+	Recipe int32 `json:"recipe"`
+	All    bool  `json:"all"`
+}) (body, error) {
+	return nil, s.bot.CraftRecipe(in.Recipe, in.All)
+}
+
+func (s *Server) containerTrade(ctx context.Context, in struct {
+	Index int32 `json:"index"`
+	Times int   `json:"times"`
+	// Raw skips the confirmation, for a caller that wants to select a trade
+	// and inspect the window itself.
+	Raw bool `json:"raw"`
+}) (body, error) {
+	if in.Raw {
+		return nil, s.bot.SelectTrade(in.Index)
+	}
+	if in.Times > 1 {
+		done, err := s.bot.TradeAndTake(ctx, in.Index, in.Times)
+		if err != nil {
+			return nil, err
+		}
+		// done < times means the villager ran out; the caller needs the real
+		// number, not the one it asked for.
+		return body{"traded": done, "requested": in.Times}, nil
+	}
+	item, err := s.bot.Trade(ctx, in.Index)
+	if err != nil {
+		return nil, err
+	}
+	return body{"traded": 1, "item": item.Name, "count": item.Count}, nil
+}
+
+// containerGrid lays a recipe out in the open crafting table by slot, and
+// takes the result. Preferred over /container/craft for hand-written tests:
+// a layout is readable, a numeric recipe id is not.
+func (s *Server) containerGrid(ctx context.Context, in struct {
+	Layout map[string]string `json:"layout"`
+	Repeat int               `json:"repeat"`
+}) (body, error) {
+	layout, err := slotLayout(in.Layout)
+	if err != nil {
+		return nil, err
+	}
+	item, err := s.bot.CraftInGrid(ctx, layout, in.Repeat)
+	if err != nil {
+		return nil, err
+	}
+	return body{"item": item.Name, "count": item.Count, "repeat": max(in.Repeat, 1)}, nil
+}
+
+// slotLayout turns the JSON {"1": "oak_planks"} form into slot indices. JSON
+// object keys are always strings, so the conversion has to happen somewhere;
+// doing it once means /craft and /container/grid cannot disagree about it.
+func slotLayout(in map[string]string) (map[int]string, error) {
+	if len(in) == 0 {
+		return nil, invalidf("layout is required, mapping a grid slot to an item")
+	}
+	out := make(map[int]string, len(in))
+	for k, v := range in {
+		slot, err := strconv.Atoi(k)
+		if err != nil {
+			return nil, invalidf("bad grid slot %q", k)
+		}
+		out[slot] = v
+	}
+	return out, nil
 }

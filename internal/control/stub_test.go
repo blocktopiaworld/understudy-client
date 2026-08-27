@@ -31,7 +31,17 @@ type stubBot struct {
 	// hitsLanded, when set below the requested count, models a target that
 	// died partway through an attack run.
 	hitsLanded int
-	version    *protocol.Version
+	// the open container window, if any
+	windowOpen  bool
+	windowID    int32
+	windowKind  int32
+	windowTitle string
+	windowSlots []understudy.ItemStack
+	lastButton  int32
+	lastRecipe  int32
+	lastAll     bool
+	lastTrade   int32
+	version     *protocol.Version
 
 	// what the handlers get back
 	err error
@@ -320,3 +330,97 @@ func (b *stubBot) ShootNearest(ctx context.Context, typeName string, draw time.D
 }
 
 var _ Bot = (*stubBot)(nil)
+
+// --- containers ---
+
+func (b *stubBot) OpenContainer(ctx context.Context, x, y, z, face int32) error {
+	b.record("OpenContainer")
+	if b.err != nil {
+		return b.err
+	}
+	b.windowOpen, b.windowID, b.windowKind, b.windowTitle = true, 7, 3, "Crafting"
+	return nil
+}
+
+func (b *stubBot) OpenContainerOnNearest(ctx context.Context, typeName string) (understudy.Entity, error) {
+	b.record("OpenContainerOnNearest:" + typeName)
+	if b.err != nil {
+		return understudy.Entity{}, b.err
+	}
+	b.windowOpen, b.windowID, b.windowKind, b.windowTitle = true, 9, 20, "Villager"
+	return understudy.Entity{ID: 11, TypeName: protocol.Namespaced(typeName)}, nil
+}
+
+func (b *stubBot) CloseContainer() error {
+	b.record("CloseContainer")
+	b.windowOpen = false
+	return b.err
+}
+
+func (b *stubBot) ContainerOpen() bool                    { return b.windowOpen }
+func (b *stubBot) ContainerID() int32                     { return b.windowID }
+func (b *stubBot) ContainerKind() int32                   { return b.windowKind }
+func (b *stubBot) ContainerTitle() string                 { return b.windowTitle }
+func (b *stubBot) ContainerSlots() []understudy.ItemStack { return b.windowSlots }
+func (b *stubBot) ContainerTruncated() bool               { return false }
+
+func (b *stubBot) ClickContainerSlot(slot int, button int8, mode int32) error {
+	b.record("ClickContainerSlot")
+	b.lastDig = [3]int32{int32(slot), int32(button), mode}
+	return b.err
+}
+
+func (b *stubBot) TakeFromContainer(slot int) error {
+	b.record("TakeFromContainer")
+	b.lastDig = [3]int32{int32(slot), 0, 0}
+	return b.err
+}
+
+func (b *stubBot) ClickContainerButton(button int32) error {
+	b.record("ClickContainerButton")
+	b.lastButton = button
+	return b.err
+}
+
+func (b *stubBot) CraftRecipe(recipeID int32, all bool) error {
+	b.record("CraftRecipe")
+	b.lastRecipe, b.lastAll = recipeID, all
+	return b.err
+}
+
+func (b *stubBot) SelectTrade(index int32) error {
+	b.record("SelectTrade")
+	b.lastTrade = index
+	return b.err
+}
+
+func (b *stubBot) CraftInGrid(ctx context.Context, layout map[int]string, repeat int) (understudy.ItemStack, error) {
+	b.record("CraftInGrid")
+	b.layout = layout
+	if b.err != nil {
+		return understudy.ItemStack{}, b.err
+	}
+	return understudy.ItemStack{Name: "minecraft:white_banner", Count: int32(max(repeat, 1))}, nil
+}
+
+func (b *stubBot) Trade(ctx context.Context, index int32) (understudy.ItemStack, error) {
+	b.record("Trade")
+	b.lastTrade = index
+	if b.err != nil {
+		return understudy.ItemStack{}, b.err
+	}
+	return understudy.ItemStack{Name: "minecraft:bread", Count: 6}, nil
+}
+
+func (b *stubBot) TradeAndTake(ctx context.Context, index int32, times int) (int, error) {
+	b.record("TradeAndTake")
+	b.lastTrade = index
+	if b.err != nil {
+		return 0, b.err
+	}
+	// Model a villager that locks out partway, which is the case worth testing.
+	if times > 2 {
+		return 2, nil
+	}
+	return times, nil
+}
