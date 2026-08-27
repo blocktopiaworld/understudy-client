@@ -10,11 +10,12 @@ func init() { protocol.Register(v26_1()) }
 
 func v26_1() *protocol.Version {
 	return protocol.NewVersion(protocol.VersionSpec{
-		Name:     "26.1",
-		Protocol: 775,
-		// The data component ids in understudy/components.go were read off a
-		// 26.1.2 server and checked against its own registry report.
-		ComponentIDs: true,
+		Name:         "26.1",
+		Protocol:     775,
+		ComponentIDs: v26_1ComponentIDs,
+		// Every payload shape in understudy/components.go was read off a
+		// 26.1.2 server.
+		CanonicalComponents: true,
 		Chunk: protocol.ChunkFormat{
 			HasFluidCount: true,
 			HasSizePrefix: false,

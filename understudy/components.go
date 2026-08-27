@@ -124,20 +124,56 @@ const (
 	componentLastEntityVariant  = 109
 )
 
+// canonicalComponent turns a component's wire id into the id this file
+// switches on.
+//
+// The ids are dense registry indices, so they shift whenever Mojang inserts a
+// component: between 1.21.4 and 26.1 only five of sixty-seven kept their
+// number, and between 1.21.11 and 26.1 only forty-one of a hundred and four.
+// This file's constants are 26.1's numbering, which is arbitrary except that
+// 26.1 is the version every payload shape here was read off.
+//
+// Getting this wrong is the one failure the whole-buffer check that established
+// everything else cannot catch. A component read at the wrong id does not
+// error — it finds some other component's payload, consumes the wrong number of
+// bytes, and desynchronises the rest of the packet silently. So a version
+// without a table refuses, and so does an id the table has no entry for.
+func canonicalComponent(v *protocol.Version, wire int32) (int32, error) {
+	if v == nil {
+		return wire, nil
+	}
+	if !v.HasComponentIDs() {
+		return 0, fmt.Errorf("data component ids for %s have not been established, "+
+			"so component %d cannot be read: generate that version's registries "+
+			"report and run internal/gen/gencomponents.mjs", v.Name, wire)
+	}
+	// Knowing which id is which is not enough. 1.21.11's ids are known and its
+	// payloads still differ: an item nested in a component is count-first there
+	// and id-first on 26.1, a registry reference is two bytes rather than one,
+	// and a damage type tag is a bare string rather than a prefixed set. Nine
+	// components differ that far, and reading any of them the 26.1 way consumes
+	// the wrong number of bytes.
+	if !v.CanonicalComponents() {
+		return 0, fmt.Errorf("data component payloads on %s are not encoded the "+
+			"way this decoder reads them; component %d cannot be read "+
+			"until that version's shapes are established", v.Name, wire)
+	}
+	kind, ok := v.ComponentKind(wire)
+	if !ok {
+		return 0, fmt.Errorf("data component %d on %s has no counterpart in the "+
+			"numbering this decoder knows", wire, v.Name)
+	}
+	return kind, nil
+}
+
 // skipComponent steps over one data component's payload.
 //
 // Returns an error naming the type when it cannot, which the caller turns into
 // a partial window rather than a desynchronised one.
-func skipComponent(v *protocol.Version, r *protocol.Reader, kind int32, into *ItemStack) error {
-	// The ids below are a 26.1 registry's, and a registry's indices shift
-	// whenever Mojang inserts an entry. On another version this table would not
-	// fail — it would read the wrong shape for a component that happens to sit
-	// at the same number and desynchronise everything after it, with nothing to
-	// show for it. Refusing is the same outcome as an unknown component: a
-	// partial window, reported.
-	if v != nil && !v.ComponentIDs {
-		return fmt.Errorf("data component ids for %s have not been established; "+
-			"the table here is 26.1's and its numbering does not carry across", v.Name)
+func skipComponent(v *protocol.Version, r *protocol.Reader, wire int32, into *ItemStack) error {
+	kind, err := canonicalComponent(v, wire)
+	if err != nil {
+		return err
 	}
 	switch kind {
 	case componentPotionContents:

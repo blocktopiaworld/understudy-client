@@ -419,17 +419,16 @@ func TestComponentNamesCoverTheRegistry(t *testing.T) {
 	}
 }
 
-// The component table belongs to one version, and using it on another is the
-// one failure this whole file cannot detect from the bytes: the ids are dense
+// The component ids belong to one version, and using one version's on another
+// is the failure this whole file cannot detect from the bytes: they are dense
 // registry indices, so a payload of the wrong shape still decodes, just wrongly.
 //
-// The 1.21.4 and 1.21.11 tables have never been established. Until they are,
-// an item with any component on those versions has to stop the scan rather than
-// silently desynchronise it.
+// A version with no table at all has to stop the scan rather than fall back on
+// somebody else's numbering.
 func TestComponentsRefuseAVersionWhoseIDsAreUnknown(t *testing.T) {
 	unchecked := protocol.NewVersion(protocol.VersionSpec{
-		Name:     "1.21.4",
-		Protocol: 769,
+		Name:     "some-future-version",
+		Protocol: 999,
 		Packets:  testPackets(t),
 	})
 	// componentDamage is about as safe as a component gets — one VarInt, and
@@ -437,10 +436,10 @@ func TestComponentsRefuseAVersionWhoseIDsAreUnknown(t *testing.T) {
 	payload := []byte{37}
 	err := skipComponent(unchecked, protocol.NewReader(payload), componentDamage, nil)
 	if err == nil {
-		t.Fatal("decoded a component using 26.1's ids on 1.21.4, which reads the " +
-			"wrong shape and desynchronises the rest of the packet")
+		t.Fatal("decoded a component on a version with no id table, which reads " +
+			"the wrong shape and desynchronises the rest of the packet")
 	}
-	for _, want := range []string{"1.21.4", "26.1", "not been established"} {
+	for _, want := range []string{"some-future-version", "not been established", "gencomponents"} {
 		if !contains(err.Error(), want) {
 			t.Errorf("error %q does not mention %q", err, want)
 		}
@@ -454,11 +453,64 @@ func TestComponentsAcceptTheVersionTheyWereBuiltFor(t *testing.T) {
 	if err != nil {
 		t.Skipf("26.1 is not registered in this build: %v", err)
 	}
-	if !v.ComponentIDs {
-		t.Fatal("26.1 is the version the component table was read from and must " +
-			"be marked as such")
+	if !v.HasComponentIDs() {
+		t.Fatal("26.1 is the version the component shapes were read from and must " +
+			"carry an id table")
 	}
 	if err := skipComponent(v, protocol.NewReader([]byte{37}), componentDamage, nil); err != nil {
 		t.Errorf("26.1 refused a damage component: %v", err)
+	}
+}
+
+// Knowing a version's component ids is not the same as being able to read its
+// components, and this is the test that keeps the two apart.
+//
+// 1.21.11's ids are known — generated from its own registries report — and its
+// payloads still differ from 26.1's. Measured against a vanilla 1.21.11 server
+// by replaying every item the 26.1 work was built from, nine differ:
+//
+//	container            an item nested in a component is count-first there
+//	                     and id-first on 26.1, and an empty slot is a zero
+//	                     count rather than an absent optional
+//	instrument           a registry reference is two bytes, not one — and the
+//	jukebox_playable     same for damage_type, provides_trim_material and the
+//	chicken/variant      entity variants
+//	damage_resistant     a tag is a bare string, where 26.1 prefixes it as a
+//	                     holder set — likewise provides_banner_patterns
+//
+// Every one of those reads a different number of bytes, so promoting 1.21.11 on
+// the strength of its id table alone would desynchronise windows silently.
+func TestKnowingIDsIsNotEnoughToDecode(t *testing.T) {
+	v, err := protocol.ByProtocol(774) // 1.21.11
+	if err != nil {
+		t.Skipf("1.21.11 is not registered in this build: %v", err)
+	}
+	if !v.HasComponentIDs() {
+		t.Error("1.21.11's component ids were generated from its registries " +
+			"report and should be present")
+	}
+	if v.CanonicalComponents() {
+		t.Fatal("1.21.11 is marked as sharing 26.1's component encodings, but " +
+			"nine of them differ — see this test's comment")
+	}
+	// The wire id for damage, which 1.21.11 does have.
+	wire, ok := func() (int32, bool) {
+		for w := int32(0); w < 200; w++ {
+			if kind, ok := v.ComponentKind(w); ok && kind == componentDamage {
+				return w, true
+			}
+		}
+		return 0, false
+	}()
+	if !ok {
+		t.Fatal("1.21.11 has no id mapping to damage, so its table is incomplete")
+	}
+	err = skipComponent(v, protocol.NewReader([]byte{37}), wire, nil)
+	if err == nil {
+		t.Fatal("decoded a 1.21.11 component with 26.1's payload shapes")
+	}
+	if !contains(err.Error(), "not encoded the way") {
+		t.Errorf("error %q should say the encodings differ, not that the id is "+
+			"unknown — the id is known", err)
 	}
 }

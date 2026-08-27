@@ -49,9 +49,10 @@ func testVersion(t *testing.T) *protocol.Version {
 		Protocol: 9999,
 		Chunk:    protocol.ChunkFormat{HasFluidCount: true},
 		Packets:  testPackets(t),
-		// The test version stands in for 26.1, whose component ids the decoder
-		// was built against.
-		ComponentIDs: true,
+		// The test version stands in for 26.1, so its component ids are the
+		// canonical ones and the mapping is the identity.
+		ComponentIDs:        identityComponentIDs(),
+		CanonicalComponents: true,
 		EntityNames: []string{
 			0: "minecraft:pig",
 			1: "minecraft:zombie",
@@ -194,4 +195,14 @@ func TestClientBuildersAgree(t *testing.T) {
 			t.Errorf("newSession left %s nil", tc.name)
 		}
 	}
+}
+
+// identityComponentIDs gives the test version the canonical numbering, which is
+// what a 26.1 server sends.
+func identityComponentIDs() map[int32]int32 {
+	ids := make(map[int32]int32, componentLastEntityVariant+1)
+	for kind := int32(0); kind <= componentLastEntityVariant; kind++ {
+		ids[kind] = kind
+	}
+	return ids
 }
