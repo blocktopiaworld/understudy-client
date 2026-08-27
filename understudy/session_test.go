@@ -147,7 +147,11 @@ func teleportPacket(v *protocol.Version, id int32, x, y, z float64) []byte {
 		F64(x).F64(y).F64(z).
 		F64(0).F64(0).F64(0).
 		F32(0).F32(0).
-		U8(0).
+		// Flags is an int, not a byte. It was written as a byte here for as
+		// long as nothing read it; the moment the client did, this fixture was
+		// three bytes short and every teleport in these tests stopped
+		// confirming.
+		I32(0).
 		Bytes()
 }
 

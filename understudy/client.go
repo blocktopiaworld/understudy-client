@@ -427,16 +427,70 @@ func (c *Client) handleSessionPacket(ctx context.Context, p protocol.Packet) (bo
 // position from client" state, resends the teleport, and — the part that bites
 // — silently drops use_item, use_item_on and player_action. See
 // awaitTeleportSettle.
+// Teleport flags, as the sync_player_position packet defines them. Each says
+// the matching field is a delta from where the player already is.
+const (
+	teleportRelativeX     = 0x01
+	teleportRelativeY     = 0x02
+	teleportRelativeZ     = 0x04
+	teleportRelativeYaw   = 0x08
+	teleportRelativePitch = 0x10
+)
+
+// relativeTo resolves the position fields a teleport marked as deltas.
+func relativeTo(flags int32, x, y, z float64, at Position) (float64, float64, float64) {
+	if flags&teleportRelativeX != 0 {
+		x += at.X
+	}
+	if flags&teleportRelativeY != 0 {
+		y += at.Y
+	}
+	if flags&teleportRelativeZ != 0 {
+		z += at.Z
+	}
+	return x, y, z
+}
+
 func (c *Client) handleTeleport(ctx context.Context, p protocol.Packet) error {
 	r := p.Reader()
 	teleportID := r.VarInt()
 	x, y, z := r.F64(), r.F64(), r.F64()
-	r.F64() // dx
-	r.F64() // dy
-	r.F64() // dz
+	r.F64() // velocity dx
+	r.F64() // velocity dy
+	r.F64() // velocity dz
 	yaw, pitch := r.F32(), r.F32()
+	flags := r.I32()
 	if err := r.Err(); err != nil {
 		return err
+	}
+	// Flags is the last field. Anything after it means the layout above has
+	// drifted — which on this packet would put the bot somewhere it is not, so
+	// it is worth saying rather than absorbing.
+	if left := len(r.Remaining()); left != 0 {
+		c.log.Warn("teleport packet has unread fields after the flags",
+			"bytes", left, "version", c.v.Name)
+	}
+	// The flags say which of the fields above are deltas rather than positions.
+	// Vanilla never sets them for /tp — the command resolves to absolutes
+	// before it sends — so this path has never been seen on the wire, and the
+	// reading rests on the packet consuming exactly, which it does.
+	//
+	// Ignoring them was survivable while nothing depended on the position being
+	// right. Dropping entities beyond the view distance does depend on it: a
+	// relative teleport read as absolute would put the bot somewhere it is not
+	// and throw away everything it can actually see.
+	if flags != 0 {
+		c.mu.RLock()
+		at := c.pos
+		c.mu.RUnlock()
+		x, y, z = relativeTo(flags, x, y, z, at)
+		if flags&teleportRelativeYaw != 0 {
+			yaw += at.Yaw
+		}
+		if flags&teleportRelativePitch != 0 {
+			pitch += at.Pitch
+		}
+		c.log.Info("relative teleport", "flags", flags, "x", x, "y", y, "z", z)
 	}
 
 	c.mu.Lock()
