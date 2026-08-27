@@ -42,6 +42,16 @@ type Support struct {
 	InWater bool
 	// InLava is true when the landing point is lava.
 	InLava bool
+	// Known is false when the column holding the search is not loaded, which
+	// is a different answer from "searched and found nothing" and must not be
+	// collapsed into it.
+	//
+	// The two were the same value for a long time, and the comment on
+	// FindGround told callers not to confuse them without giving them any way
+	// to tell. Fall then read the shared "not found" as "no floor here" and
+	// descended into terrain it simply had not been sent yet, which a server
+	// answers by refusing every move and then kicking for floating.
+	Known bool
 }
 
 // maxGroundSearch bounds the downward scan. Deeper than the tallest possible
@@ -55,14 +65,15 @@ const maxGroundSearch = 512
 // stays under. A bot that treats water as empty space falls through it like a
 // stone and dies at the bottom.
 //
-// Returns Found == false if the terrain is not loaded or nothing was hit,
-// which callers must not confuse with "the void": an unloaded chunk reads as
-// air everywhere.
+// Sets Known == false when the terrain is not loaded, and Found == false when
+// it is loaded and nothing was hit. Callers must not treat the first as the
+// second: an unloaded chunk reads as air everywhere, so "no data" would
+// otherwise mean "the void".
 func (c *Client) FindGround(x, y, z int32) Support {
 	if !c.world.HasChunk(x, z) {
-		return Support{}
+		return Support{Known: false}
 	}
-	var support Support
+	support := Support{Known: true}
 	c.world.Scan(func(at func(x, y, z int32) int32) {
 		for probe := y; probe > y-maxGroundSearch; probe-- {
 			state := at(x, probe, z)
@@ -73,13 +84,13 @@ func (c *Client) FindGround(x, y, z int32) Support {
 				// stopping one block high lands the bot on "air above water" and
 				// the server charges full fall damage — which is exactly the bug
 				// this looks like it is avoiding.
-				support = Support{GroundY: float64(probe), Found: true, InWater: true}
+				support = Support{GroundY: float64(probe), Found: true, InWater: true, Known: true}
 				return
 			case c.v.IsLava(state):
-				support = Support{GroundY: float64(probe + 1), Found: true, InLava: true}
+				support = Support{GroundY: float64(probe + 1), Found: true, InLava: true, Known: true}
 				return
 			case c.v.IsSolid(state):
-				support = Support{GroundY: float64(probe + 1), Found: true}
+				support = Support{GroundY: float64(probe + 1), Found: true, Known: true}
 				return
 			}
 		}

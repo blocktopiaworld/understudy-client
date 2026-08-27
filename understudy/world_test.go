@@ -18,7 +18,7 @@ func TestFindGround(t *testing.T) {
 			name:      "solid floor",
 			place:     func(c *Client) { c.world.SetBlockState(0, 60, 0, stateStone) },
 			from:      70,
-			want:      Support{GroundY: 61, Found: true},
+			want:      Support{GroundY: 61, Found: true, Known: true},
 			wantFound: true,
 		},
 		{
@@ -28,17 +28,19 @@ func TestFindGround(t *testing.T) {
 			name:      "water surface",
 			place:     func(c *Client) { c.world.SetBlockState(0, 60, 0, stateWater) },
 			from:      70,
-			want:      Support{GroundY: 60, Found: true, InWater: true},
+			want:      Support{GroundY: 60, Found: true, Known: true, InWater: true},
 			wantFound: true,
 		},
 		{
 			name:      "lava",
 			place:     func(c *Client) { c.world.SetBlockState(0, 60, 0, stateLava) },
 			from:      70,
-			want:      Support{GroundY: 61, Found: true, InLava: true},
+			want:      Support{GroundY: 61, Found: true, Known: true, InLava: true},
 			wantFound: true,
 		},
-		{name: "nothing below", place: func(c *Client) {}, from: 70},
+		// Loaded and empty: Known stays true, because the client has the
+		// column and there genuinely is nothing in it.
+		{name: "nothing below", place: func(c *Client) {}, from: 70, want: Support{Known: true}},
 		{
 			name: "stops at the first thing hit",
 			place: func(c *Client) {
@@ -46,7 +48,7 @@ func TestFindGround(t *testing.T) {
 				c.world.SetBlockState(0, 60, 0, stateStone)
 			},
 			from:      70,
-			want:      Support{GroundY: 66, Found: true},
+			want:      Support{GroundY: 66, Found: true, Known: true},
 			wantFound: true,
 		},
 	} {

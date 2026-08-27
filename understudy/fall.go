@@ -51,6 +51,31 @@ func (c *Client) Fall(ctx context.Context) (blocks float64, err error) {
 	// exact block instead of overshooting into it and being corrected back to
 	// wherever the last valid position happened to be.
 	support := c.GroundBelow()
+	if !support.Known {
+		// The column has not arrived. "I have not been sent the terrain" is not
+		// "there is no terrain", and descending on the second reading is how a
+		// bot teleported onto a ledge fourteen thousand blocks away ends up
+		// kicked: it pushes into ground the server can see and the client
+		// cannot, the server refuses every move, and after four seconds of a
+		// player claiming to be airborne at a constant height it disconnects
+		// them for floating.
+		//
+		// Staying put is the safe reading. If there really is nothing under the
+		// bot the server will start it falling, which is its job — the client
+		// simulates a fall to land precisely, not to discover gravity.
+		//
+		// Claiming to be standing is the safe half of that. The server is the
+		// authority on solid ground: if the bot really is in mid-air it will
+		// say so and start the fall itself, whereas a client that volunteers
+		// "airborne" over terrain it cannot see is counted toward the floating
+		// threshold for as long as it keeps saying it.
+		c.mu.Lock()
+		c.onGround = true
+		c.mu.Unlock()
+		c.log.Debug("not falling: the column below has not been sent",
+			"x", start.X, "y", start.Y, "z", start.Z)
+		return 0, nil
+	}
 	if !support.Found {
 		return c.descend(ctx, descent{start: start, blind: true})
 	}

@@ -196,6 +196,10 @@ func (s *Server) handleGround(w http.ResponseWriter, _ *http.Request) {
 	support := s.bot.GroundBelow()
 	pos := s.bot.Position()
 	s.writeJSON(w, http.StatusOK, body{
+		// known distinguishes "the column is not loaded" from "loaded, and
+		// nothing is under the bot". Reporting only `found` made those one
+		// answer, which is the reading that gets a bot kicked for floating.
+		"known": support.Known,
 		"found": support.Found, "ground_y": support.GroundY,
 		"in_water": support.InWater, "in_lava": support.InLava,
 		"submerged": s.bot.Submerged(),
