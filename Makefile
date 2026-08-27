@@ -2,7 +2,25 @@
 #
 # `make check` is what CI runs and what should pass before anything is pushed.
 
-GO      ?= go
+# GO resolves to the first go on PATH that actually runs.
+#
+# Not paranoia: on at least one dev box /usr/local/bin/go and /usr/bin/go are
+# symlinks to a *directory*, and they sort before the real one. Executing a
+# directory fails with "Permission denied", which reads as a permissions problem
+# rather than a broken symlink and cost an afternoon to spot. Override with
+# `make GO=/path/to/go` if this picks wrongly.
+# Deliberately an absolute path rather than the bare name: make execs simple
+# recipes directly instead of through a shell, and its own PATH search does not
+# skip an entry it cannot execute the way sh does.
+GO      ?= $(shell for g in $$(command -v -a go 2>/dev/null) /snap/bin/go /usr/local/go/bin/go; do \
+	           "$$g" version >/dev/null 2>&1 && echo "$$g" && break; done)
+
+# Likewise for golangci-lint, which `go install` puts in GOPATH/bin — a
+# directory that is frequently not on PATH.
+GOLANGCI ?= $(shell for l in $$(command -v -a golangci-lint 2>/dev/null) \
+	              "$$HOME/go/bin/golangci-lint"; do \
+	           "$$l" --version >/dev/null 2>&1 && echo "$$l" && break; done)
+
 BINARY  ?= understudy-client
 PKGS    := ./...
 
@@ -65,8 +83,8 @@ vet:
 ## lint: run golangci-lint if it is installed
 .PHONY: lint
 lint:
-	@if command -v golangci-lint >/dev/null 2>&1; then \
-		golangci-lint run; \
+	@if [ -n "$(GOLANGCI)" ]; then \
+		$(GOLANGCI) run; \
 	else \
 		echo "golangci-lint not installed; skipping"; \
 		echo "  go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest"; \

@@ -177,3 +177,21 @@ both. Each revision replaced the previous wording.
 
 `make check` runs `fmt-check`, `vet`, `golangci-lint` and the tests under
 `-race`. It is the gate; if it does not pass, the change is not finished.
+
+The Makefile resolves `go` and `golangci-lint` to **absolute paths** rather than
+trusting `PATH`, for a reason worth knowing: make execs simple recipes directly
+instead of through a shell, and its own `PATH` search does not skip an entry it
+cannot execute. On one dev box `/usr/local/bin/go` is a symlink to a *directory*
+and sorts before the real one, so every target failed with "Permission denied" —
+which reads as a permissions problem rather than a broken symlink.
+
+Two linters are worth calling out because they earn their place:
+
+- **`gocognit`** at 30. Three functions crossed it and all three were genuinely
+  doing several jobs — an NBT walker whose list and compound cases wanted their
+  own functions, a recipe decoder with five near-identical branches that
+  collapsed into one "slots before, slots after" helper, and a packet dispatch
+  with a whole chunk decoder inline. Splitting them was the right answer in
+  every case; none needed suppressing.
+- **`errcheck`**. An ignored error on a packet write is a silently dropped
+  action, which is this codebase's defining failure mode.

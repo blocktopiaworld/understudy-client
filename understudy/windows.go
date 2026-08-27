@@ -1,6 +1,7 @@
 package understudy
 
-// Window types and slot layouts.
+// WindowType identifies the kind of UI the server opened. The file also carries
+// the slot layouts each of those windows uses.
 //
 // # Where these numbers come from
 //

@@ -175,51 +175,7 @@ func (c *Client) waitForChunk(ctx context.Context, timeout time.Duration) bool {
 func (c *Client) handleWorldPacket(p protocol.Packet) (bool, error) {
 	switch p.ID {
 	case c.v.Packets.CBPlayMapChunk:
-		r := p.Reader()
-		x, z := r.I32(), r.I32()
-		// Heightmaps sit between the coordinates and the chunk data. Nothing
-		// here reads them, but they must be walked *exactly* or the data blob
-		// starts at the wrong offset — and that surfaces as a short read deep
-		// inside a later section, nowhere near the real mistake.
-		//
-		// Their shape changed in 1.21.5. Before that they are a single
-		// nameless NBT compound; from 1.21.5 they are a prefixed array of
-		// {type, long[]}. Reading the new shape off the old one takes a VarInt
-		// out of the middle of NBT and walks a garbage array.
-		if c.v.Chunk.NBTHeightmaps {
-			n, err := nbt.SkipTag(r.Remaining())
-			if err != nil {
-				return true, fmt.Errorf("understudy: chunk %d,%d heightmaps: %w", x, z, err)
-			}
-			r.Skip(n)
-		} else {
-			heightmaps := r.VarInt()
-			for range heightmaps {
-				r.VarInt() // type
-				n := r.VarInt()
-				for range n {
-					r.I64()
-				}
-			}
-		}
-		size := r.VarInt()
-		if err := r.Err(); err != nil {
-			return true, err
-		}
-		if size < 0 || int(size) > len(r.Remaining()) {
-			return true, nil // malformed or truncated; drop rather than guess
-		}
-		blob := r.Remaining()[:size]
-		dumpChunkBlob(blob)
-		column, err := protocol.ParseChunkData(c.v, x, z, blob)
-		if err != nil {
-			// A chunk that fails to parse is dropped, not fatal: the bot keeps
-			// playing with a hole in its map rather than dying on one packet.
-			c.log.Warn("chunk parse failed", "x", x, "z", z, "err", err)
-			return true, nil
-		}
-		c.world.Store(column)
-		return true, nil
+		return true, c.handleMapChunk(p)
 
 	case c.v.Packets.CBPlayChunkBatchFinished:
 		// The server sends chunks in batches and waits for the client to report
@@ -299,6 +255,63 @@ func (c *Client) handleWorldPacket(p protocol.Packet) (bool, error) {
 		return true, nil
 	}
 	return false, nil
+}
+
+// handleMapChunk decodes a chunk column and stores it.
+//
+// A chunk that fails to parse is dropped, not fatal: the bot keeps playing with
+// a hole in its map rather than dying on one packet.
+func (c *Client) handleMapChunk(p protocol.Packet) error {
+	r := p.Reader()
+	x, z := r.I32(), r.I32()
+	if err := c.skipHeightmaps(r, x, z); err != nil {
+		return err
+	}
+	size := r.VarInt()
+	if err := r.Err(); err != nil {
+		return err
+	}
+	if size < 0 || int(size) > len(r.Remaining()) {
+		return nil // malformed or truncated; drop rather than guess
+	}
+	blob := r.Remaining()[:size]
+	dumpChunkBlob(blob)
+	column, err := protocol.ParseChunkData(c.v, x, z, blob)
+	if err != nil {
+		c.log.Warn("chunk parse failed", "x", x, "z", z, "err", err)
+		return nil
+	}
+	c.world.Store(column)
+	return nil
+}
+
+// skipHeightmaps steps over the heightmaps between the chunk coordinates and
+// the chunk data.
+//
+// Nothing here reads them, but they must be walked *exactly* or the data blob
+// starts at the wrong offset — and that surfaces as a short read deep inside a
+// later section, nowhere near the real mistake.
+//
+// Their shape changed in 1.21.5. Before that they are a single nameless NBT
+// compound; from 1.21.5 they are a prefixed array of {type, long[]}. Reading
+// the new shape off the old one takes a VarInt out of the middle of NBT and
+// walks a garbage array.
+func (c *Client) skipHeightmaps(r *protocol.Reader, x, z int32) error {
+	if c.v.Chunk.NBTHeightmaps {
+		n, err := nbt.SkipTag(r.Remaining())
+		if err != nil {
+			return fmt.Errorf("understudy: chunk %d,%d heightmaps: %w", x, z, err)
+		}
+		r.Skip(n)
+		return nil
+	}
+	for range r.VarInt() {
+		r.VarInt() // type
+		for range r.VarInt() {
+			r.I64()
+		}
+	}
+	return r.Err()
 }
 
 // dumpChunkBlob writes the first raw chunkData payload to the path in

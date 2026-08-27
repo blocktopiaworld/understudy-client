@@ -59,6 +59,10 @@ func SkipTag(data []byte) (int, error) {
 }
 
 // skipPayload steps over the payload of a tag whose type is already known.
+//
+// The compound and list cases are separate functions: they are the only two
+// that recurse, and keeping them apart is what stops this becoming one long
+// switch that nobody wants to re-read.
 func skipPayload(data []byte, tag byte, depth int) (int, error) {
 	if depth > maxDepth {
 		return 0, fmt.Errorf("nbt: nested deeper than %d", maxDepth)
@@ -73,73 +77,93 @@ func skipPayload(data []byte, tag byte, depth int) (int, error) {
 	case TagLong, TagDouble:
 		return fixed(data, 8)
 	case TagString:
-		// Length is unsigned: a 40000-byte string is legal and a signed read
-		// would take it as negative.
-		if len(data) < 2 {
-			return 0, fmt.Errorf("%w: string length", ErrTruncated)
-		}
-		return fixed(data, 2+int(binary.BigEndian.Uint16(data)))
+		return skipString(data)
 	case TagByteArray:
 		return array(data, 1)
 	case TagIntArray:
 		return array(data, 4)
 	case TagLongArray:
 		return array(data, 8)
-
 	case TagList:
-		if len(data) < 5 {
-			return 0, fmt.Errorf("%w: list header", ErrTruncated)
-		}
-		elem := data[0]
-		count := int32(binary.BigEndian.Uint32(data[1:]))
-		off := 5
-		// A negative or zero count means an empty list, and the element type is
-		// then meaningless — vanilla writes TAG_End for it.
-		if count <= 0 || elem == TagEnd {
-			return off, nil
-		}
-		for range count {
-			n, err := skipPayload(data[off:], elem, depth+1)
-			if err != nil {
-				return 0, err
-			}
-			off += n
-		}
-		return off, nil
-
+		return skipList(data, depth)
 	case TagCompound:
-		off := 0
-		for {
-			if off >= len(data) {
-				return 0, fmt.Errorf("%w: compound without an end tag", ErrTruncated)
-			}
-			inner := data[off]
-			off++
-			if inner == TagEnd {
-				return off, nil
-			}
-			// Named entries inside a compound always carry their name, even
-			// when the root does not.
-			if off+2 > len(data) {
-				return 0, fmt.Errorf("%w: entry name length", ErrTruncated)
-			}
-			nameLen := int(binary.BigEndian.Uint16(data[off:]))
-			off += 2
-			if off+nameLen > len(data) {
-				return 0, fmt.Errorf("%w: entry name", ErrTruncated)
-			}
-			off += nameLen
-
-			n, err := skipPayload(data[off:], inner, depth+1)
-			if err != nil {
-				return 0, err
-			}
-			off += n
-		}
-
+		return skipCompound(data, depth)
 	default:
 		return 0, fmt.Errorf("nbt: unknown tag type %d", tag)
 	}
+}
+
+// skipString steps over a length-prefixed string. The length is unsigned: a
+// 40000-byte string is legal and a signed read would take it as negative.
+func skipString(data []byte) (int, error) {
+	if len(data) < 2 {
+		return 0, fmt.Errorf("%w: string length", ErrTruncated)
+	}
+	return fixed(data, 2+int(binary.BigEndian.Uint16(data)))
+}
+
+// skipList steps over a typed list: an element type, a count, then that many
+// payloads of the same type.
+func skipList(data []byte, depth int) (int, error) {
+	if len(data) < 5 {
+		return 0, fmt.Errorf("%w: list header", ErrTruncated)
+	}
+	elem := data[0]
+	count := int32(binary.BigEndian.Uint32(data[1:]))
+	off := 5
+	// A non-positive count means an empty list, and the element type is then
+	// meaningless — vanilla writes TAG_End for it.
+	if count <= 0 || elem == TagEnd {
+		return off, nil
+	}
+	for range count {
+		n, err := skipPayload(data[off:], elem, depth+1)
+		if err != nil {
+			return 0, err
+		}
+		off += n
+	}
+	return off, nil
+}
+
+// skipCompound steps over named entries until TAG_End.
+func skipCompound(data []byte, depth int) (int, error) {
+	off := 0
+	for {
+		if off >= len(data) {
+			return 0, fmt.Errorf("%w: compound without an end tag", ErrTruncated)
+		}
+		inner := data[off]
+		off++
+		if inner == TagEnd {
+			return off, nil
+		}
+		// Entries inside a compound always carry their name, even when the
+		// root does not.
+		n, err := skipName(data[off:])
+		if err != nil {
+			return 0, err
+		}
+		off += n
+
+		n, err = skipPayload(data[off:], inner, depth+1)
+		if err != nil {
+			return 0, err
+		}
+		off += n
+	}
+}
+
+// skipName steps over a compound entry's name.
+func skipName(data []byte) (int, error) {
+	if len(data) < 2 {
+		return 0, fmt.Errorf("%w: entry name length", ErrTruncated)
+	}
+	n := 2 + int(binary.BigEndian.Uint16(data))
+	if len(data) < n {
+		return 0, fmt.Errorf("%w: entry name", ErrTruncated)
+	}
+	return n, nil
 }
 
 func fixed(data []byte, n int) (int, error) {

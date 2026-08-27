@@ -190,69 +190,57 @@ func (c *Client) handleRecipeBook(p protocol.Packet) error {
 }
 
 // readRecipeDisplay steps over one recipe's display and returns what it makes.
-func (c *Client) readRecipeDisplay(r *protocol.Reader) (result string, err error) {
-	switch kind := r.VarInt(); kind {
+//
+// Every kind is the same shape — some slot displays, of which one is the result
+// — so each is described as "how many come before the result, and how many
+// after", rather than as five near-identical blocks of the same three lines.
+func (c *Client) readRecipeDisplay(r *protocol.Reader) (string, error) {
+	kind := r.VarInt()
+	switch kind {
 	case recipeShapeless:
-		for range r.VarInt() {
-			if _, err = c.readSlotDisplay(r, 0); err != nil {
-				return "", err
-			}
-		}
-		result, err = c.readSlotDisplay(r, 0)
-		if err != nil {
-			return "", err
-		}
-		_, err = c.readSlotDisplay(r, 0) // crafting station
+		// A count, then that many ingredients, then result and station.
+		return c.readDisplaySlots(r, int(r.VarInt()), 1)
 	case recipeShaped:
 		r.VarInt() // width
 		r.VarInt() // height
-		for range r.VarInt() {
-			if _, err = c.readSlotDisplay(r, 0); err != nil {
-				return "", err
-			}
-		}
-		result, err = c.readSlotDisplay(r, 0)
-		if err != nil {
-			return "", err
-		}
-		_, err = c.readSlotDisplay(r, 0)
+		return c.readDisplaySlots(r, int(r.VarInt()), 1)
 	case recipeFurnace:
-		if _, err = c.readSlotDisplay(r, 0); err != nil { // ingredient
-			return "", err
-		}
-		if _, err = c.readSlotDisplay(r, 0); err != nil { // fuel
-			return "", err
-		}
-		if result, err = c.readSlotDisplay(r, 0); err != nil {
-			return "", err
-		}
-		if _, err = c.readSlotDisplay(r, 0); err != nil {
+		// ingredient, fuel, [result], station, then duration and experience.
+		result, err := c.readDisplaySlots(r, 2, 1)
+		if err != nil {
 			return "", err
 		}
 		r.VarInt() // duration
 		r.F32()    // experience
+		return result, r.Err()
 	case recipeStonecutt:
-		if _, err = c.readSlotDisplay(r, 0); err != nil {
-			return "", err
-		}
-		if result, err = c.readSlotDisplay(r, 0); err != nil {
-			return "", err
-		}
-		_, err = c.readSlotDisplay(r, 0)
+		return c.readDisplaySlots(r, 1, 1)
 	case recipeSmithing:
-		for range 3 { // template, base, addition
-			if _, err = c.readSlotDisplay(r, 0); err != nil {
-				return "", err
-			}
-		}
-		if result, err = c.readSlotDisplay(r, 0); err != nil {
-			return "", err
-		}
-		_, err = c.readSlotDisplay(r, 0)
+		// template, base, addition, [result], station.
+		return c.readDisplaySlots(r, 3, 1)
 	default:
 		return "", fmt.Errorf("unknown recipe display kind %d", kind)
 	}
-	return result, err
+}
+
+// readDisplaySlots steps over `before` slot displays, then the result, then
+// `after` more, and returns what the result names.
+func (c *Client) readDisplaySlots(r *protocol.Reader, before, after int) (string, error) {
+	for range before {
+		if _, err := c.readSlotDisplay(r, 0); err != nil {
+			return "", err
+		}
+	}
+	result, err := c.readSlotDisplay(r, 0)
+	if err != nil {
+		return "", err
+	}
+	for range after {
+		if _, err := c.readSlotDisplay(r, 0); err != nil {
+			return "", err
+		}
+	}
+	return result, nil
 }
 
 // readSlotDisplay steps over a SlotDisplay and returns the item it names, if

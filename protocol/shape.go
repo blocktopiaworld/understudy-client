@@ -16,13 +16,25 @@ const ShapeUnit = 32
 // Anything treating a box as clamped to its own block will get those wrong.
 type Box [6]int8
 
-// MinX and friends name the fields, because [6]int8 indices are exactly the
+// The accessors below name the fields, because [6]int8 indices are exactly the
 // kind of thing that gets transposed silently.
+
+// MinX returns the box's lower X bound, in units of 1/ShapeUnit.
 func (b Box) MinX() int8 { return b[0] }
+
+// MinY returns the box's lower Y bound, in units of 1/ShapeUnit.
 func (b Box) MinY() int8 { return b[1] }
+
+// MinZ returns the box's lower Z bound, in units of 1/ShapeUnit.
 func (b Box) MinZ() int8 { return b[2] }
+
+// MaxX returns the box's upper X bound, in units of 1/ShapeUnit.
 func (b Box) MaxX() int8 { return b[3] }
+
+// MaxY returns the box's upper Y bound, in units of 1/ShapeUnit.
 func (b Box) MaxY() int8 { return b[4] }
+
+// MaxZ returns the box's upper Z bound, in units of 1/ShapeUnit.
 func (b Box) MaxZ() int8 { return b[5] }
 
 // Empty reports whether the box encloses nothing.
