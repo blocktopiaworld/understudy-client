@@ -241,11 +241,15 @@ func (c *Client) Brew(ctx context.Context, bottle, ingredient, fuel string, coun
 
 	// Brewing transforms the bottles where they stand, so "done" is the first
 	// bottle becoming something other than what went in.
+	//
+	// Comparing *names* cannot detect that: a water bottle, an awkward potion
+	// and a potion of strength are all "minecraft:potion". Only the potion id
+	// inside the contents component differs, which is why readSlot keeps it.
 	deadline := time.After(brewTimeout)
 	ticker := time.NewTicker(chunkPollInterval)
 	defer ticker.Stop()
 	for {
-		if now, ok := c.window.Slot(BrewBottleSlot1); ok && now.Name != before.Name {
+		if now, ok := c.window.Slot(BrewBottleSlot1); ok && brewChanged(before, now) {
 			return nil
 		}
 		select {
@@ -258,6 +262,18 @@ func (c *Client) Brew(ctx context.Context, bottle, ingredient, fuel string, coun
 		case <-ticker.C:
 		}
 	}
+}
+
+// brewChanged reports whether a bottle slot now holds something different from
+// what went in — by potion identity, not by name.
+func brewChanged(before, now ItemStack) bool {
+	if now.Empty() {
+		return false
+	}
+	if now.Name != before.Name {
+		return true
+	}
+	return now.Potion != before.Potion
 }
 
 // requireWindow refuses when the open window is not one of the expected types.
@@ -308,3 +324,58 @@ func (c *Client) SetItemName(name string) error {
 // maxItemNameLen is the anvil's own limit. A longer name is rejected outright
 // by the server rather than truncated, so it is worth naming here.
 const maxItemNameLen = 50
+
+// ActivateBeacon pays a beacon and selects the effect it projects.
+//
+// The payment goes in the beacon's single slot; the effect is a separate packet
+// rather than a container button, which is why this needs its own verb where a
+// loom or a stonecutter does not.
+//
+// primary is a status-effect id. secondary is only accepted on a full
+// five-layer pyramid and is ignored otherwise; pass 0 for none. A beacon whose
+// pyramid is too small, or which cannot see the sky, takes the payment and
+// projects nothing — silently, as ever.
+func (c *Client) ActivateBeacon(ctx context.Context, payment string, primary, secondary int32) error {
+	if err := c.requireWindow(WindowBeacon); err != nil {
+		return err
+	}
+	if c.v.Packets.SBPlaySetBeaconEffect == protocol.Absent {
+		return fmt.Errorf("understudy: %s has no set_beacon_effect packet", c.v.Name)
+	}
+	if payment != "" {
+		if _, err := c.PutOneIntoSlot(ctx, payment, BeaconPaymentSlot); err != nil {
+			return fmt.Errorf("understudy: paying the beacon: %w", err)
+		}
+	}
+	w := protocol.NewWriter(c.v.Packets.SBPlaySetBeaconEffect)
+	// Both effects are optional: a present flag, then the id.
+	w.Bool(primary > 0)
+	if primary > 0 {
+		w.VarInt(primary)
+	}
+	w.Bool(secondary > 0)
+	if secondary > 0 {
+		w.VarInt(secondary)
+	}
+	if err := c.conn.WritePacket(w.Bytes()); err != nil {
+		return err
+	}
+	return wait(ctx, clickDelay)
+}
+
+// ApplyToMap runs a map through a cartography table — paper to expand it, glass
+// to lock it, an empty map to copy it — and takes the result.
+//
+// A plain three-slot container, so this is only naming which slot is which.
+func (c *Client) ApplyToMap(ctx context.Context, mapItem, applied string) (ItemStack, error) {
+	if err := c.requireWindow(WindowCartography); err != nil {
+		return ItemStack{}, err
+	}
+	if _, err := c.PutOneIntoSlot(ctx, mapItem, CartographyMapSlot); err != nil {
+		return ItemStack{}, err
+	}
+	if _, err := c.PutOneIntoSlot(ctx, applied, CartographyPaperSlot); err != nil {
+		return ItemStack{}, err
+	}
+	return c.TakeSlot(ctx, CartographyResultSlot, 3*time.Second)
+}

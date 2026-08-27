@@ -80,6 +80,8 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle("POST /smith", handle(s, s.smith))
 	mux.Handle("POST /enchant", handle(s, s.enchant))
 	mux.Handle("POST /brew", handle(s, s.brew))
+	mux.Handle("POST /beacon", handle(s, s.beacon))
+	mux.Handle("POST /cartography", handle(s, s.cartography))
 	mux.Handle("POST /container/trade", handle(s, s.containerTrade))
 	return mux
 }
@@ -1049,4 +1051,23 @@ func (s *Server) handleRecipes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.writeJSON(w, http.StatusOK, body{"known": s.bot.KnownRecipes()})
+}
+
+func (s *Server) beacon(ctx context.Context, in struct {
+	Payment   string `json:"payment"`
+	Primary   int32  `json:"primary"`
+	Secondary int32  `json:"secondary"`
+}) (body, error) {
+	return nil, s.bot.ActivateBeacon(ctx, in.Payment, in.Primary, in.Secondary)
+}
+
+func (s *Server) cartography(ctx context.Context, in struct {
+	Map     string `json:"map"`
+	Applied string `json:"applied"`
+}) (body, error) {
+	item, err := s.bot.ApplyToMap(ctx, in.Map, in.Applied)
+	if err != nil {
+		return nil, err
+	}
+	return body{"item": item.Name, "count": item.Count}, nil
 }

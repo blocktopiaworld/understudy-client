@@ -216,14 +216,47 @@ func TestHandleWindowItemsRejectsImplausibleCount(t *testing.T) {
 
 func TestHandleSetSlot(t *testing.T) {
 	c := newTestClient(t)
+	// A real set_slot carries the full item: count, id, then the added and
+	// removed component counts. The fixture used to stop after the id, which
+	// mirrored a reader that ignored the rest — so it kept passing while the
+	// reader could not have handled an actual packet.
 	p := packet(c.v.Packets.CBPlaySetSlot, func(w *protocol.Writer) {
-		w.VarInt(PlayerWindowID).VarInt(2).I16(36).VarInt(9).VarInt(1)
+		w.VarInt(PlayerWindowID).VarInt(2).I16(36).
+			VarInt(9).VarInt(1). // 9 dirt
+			VarInt(0).VarInt(0)  // no components added or removed
 	})
 	if _, err := c.handleInventoryPacket(p); err != nil {
 		t.Fatalf("handleInventoryPacket: %v", err)
 	}
 	if it, ok := c.SlotAt(36); !ok || it.Count != 9 || it.Name != "minecraft:dirt" {
 		t.Errorf("slot 36 = %+v, %v; want 9 dirt", it, ok)
+	}
+}
+
+// A potion arrives by set_slot when brewing finishes, and every potion is
+// named "minecraft:potion" — so the contents component is the only thing that
+// says which one it is. Dropping it left Brew waiting out its timeout on a
+// change it could not see.
+func TestHandleSetSlotKeepsThePotionIdentity(t *testing.T) {
+	c := newTestClient(t)
+	p := packet(c.v.Packets.CBPlaySetSlot, func(w *protocol.Writer) {
+		w.VarInt(PlayerWindowID).VarInt(3).I16(36).
+			VarInt(1).VarInt(1).  // one item
+			VarInt(1).VarInt(0).  // one component added
+			VarInt(51).           // potion contents
+			Bool(true).VarInt(7). // potion id 7
+			Bool(false).          // no custom colour
+			VarInt(0).VarInt(0)   // no effects
+	})
+	if _, err := c.handleInventoryPacket(p); err != nil {
+		t.Fatalf("handleInventoryPacket: %v", err)
+	}
+	it, ok := c.SlotAt(36)
+	if !ok {
+		t.Fatal("slot 36 is empty; the component made the item undecodable")
+	}
+	if it.Potion != 7 {
+		t.Errorf("Potion = %d, want 7 — without it one potion cannot be told from another", it.Potion)
 	}
 }
 

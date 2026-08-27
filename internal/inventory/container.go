@@ -23,6 +23,7 @@ type Container struct {
 	kind     int32
 	title    string
 	slots    []ItemStack
+	declared int
 	trimmed  bool
 	stateID  int32
 	sequence int
@@ -36,7 +37,7 @@ func (c *Container) Open(id, kind int32, title string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.open, c.id, c.kind, c.title = true, id, kind, title
-	c.slots, c.trimmed = nil, false
+	c.slots, c.declared, c.trimmed = nil, 0, false
 	c.sequence++
 }
 
@@ -97,12 +98,26 @@ func (c *Container) Matches(windowID int32) bool {
 	return c.open && windowID == c.id
 }
 
-// ReplaceAll sets the whole contents. trimmed records that decoding stopped
-// early, so a caller does not read a short slice as "the rest is empty".
-func (c *Container) ReplaceAll(slots []ItemStack, trimmed bool) {
+// ReplaceAll sets the contents. declared is the slot count the server stated,
+// which is not always how many items decoded: an item carrying data components
+// stops the scan, and trimmed records that.
+//
+// The two are kept apart because the window's *shape* must survive a partial
+// decode. Sizing the layout from the decoded items instead made a 41-slot
+// brewing stand look like 32, so "the container's own slots" came out as
+// 41-36=5 one moment and 32-36 clamped to 0 the next — and every slot lookup
+// then searched from the wrong floor, silently.
+func (c *Container) ReplaceAll(slots []ItemStack, declared int, trimmed bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.slots, c.trimmed = slots, trimmed
+	c.slots, c.declared, c.trimmed = slots, declared, trimmed
+	if declared > len(slots) {
+		// Pad so Slot lookups inside the window answer "empty" rather than
+		// "out of range" for the slots that could not be decoded.
+		for i := len(slots); i < declared; i++ {
+			c.slots = append(c.slots, ItemStack{Slot: i})
+		}
+	}
 }
 
 // SetSlot updates one slot, growing the view if the server addresses past the
@@ -163,9 +178,15 @@ func (c *Container) Slot(slot int) (ItemStack, bool) {
 
 // Size returns how many slots the window covers, including the player's own
 // inventory rows, which the server appends to every container.
+//
+// This is the count the server declared, not the number of items successfully
+// decoded — see ReplaceAll for why that distinction is load-bearing.
 func (c *Container) Size() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+	if c.declared > len(c.slots) {
+		return c.declared
+	}
 	return len(c.slots)
 }
 

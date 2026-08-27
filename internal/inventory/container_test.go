@@ -2,6 +2,12 @@ package inventory
 
 import "testing"
 
+// fill sets a container's contents where the declared size and the decoded
+// count agree, which is the ordinary case.
+func fill(c *Container, trimmed bool, items ...ItemStack) {
+	c.ReplaceAll(items, len(items), trimmed)
+}
+
 func TestContainerStartsClosed(t *testing.T) {
 	c := NewContainer()
 	if c.IsOpen() {
@@ -32,7 +38,7 @@ func TestContainerOpenAndClose(t *testing.T) {
 		t.Error("Matches should reject other window ids")
 	}
 
-	c.ReplaceAll([]ItemStack{{Slot: 0, Name: "minecraft:oak_planks", Count: 4}}, false)
+	fill(c, false, ItemStack{Slot: 0, Name: "minecraft:oak_planks", Count: 4})
 	c.Close()
 
 	if c.IsOpen() || c.Matches(7) {
@@ -50,7 +56,7 @@ func TestContainerOpenAndClose(t *testing.T) {
 func TestOpeningDiscardsThePreviousContents(t *testing.T) {
 	c := NewContainer()
 	c.Open(1, 0, "first")
-	c.ReplaceAll([]ItemStack{{Slot: 0, Name: "minecraft:diamond", Count: 9}}, true)
+	fill(c, true, ItemStack{Slot: 0, Name: "minecraft:diamond", Count: 9})
 
 	c.Open(2, 0, "second")
 	if got := c.Size(); got != 0 {
@@ -110,7 +116,7 @@ func TestSetSlotGrowsTheView(t *testing.T) {
 func TestContainerSlotOutOfRange(t *testing.T) {
 	c := NewContainer()
 	c.Open(1, 0, "")
-	c.ReplaceAll([]ItemStack{{Slot: 0, Name: "minecraft:dirt", Count: 1}}, false)
+	fill(c, false, ItemStack{Slot: 0, Name: "minecraft:dirt", Count: 1})
 	for _, slot := range []int{-1, 1, 100} {
 		if _, ok := c.Slot(slot); ok {
 			t.Errorf("Slot(%d) reported ok for a %d-slot window", slot, c.Size())
@@ -134,11 +140,11 @@ func TestStateIDIsTracked(t *testing.T) {
 func TestContainerFindAndCount(t *testing.T) {
 	c := NewContainer()
 	c.Open(1, 0, "")
-	c.ReplaceAll([]ItemStack{
-		{Slot: 0, Name: "minecraft:oak_planks", Count: 3},
-		{Slot: 1, Name: "minecraft:stick", Count: 2},
-		{Slot: 2, Name: "minecraft:oak_planks", Count: 5},
-	}, false)
+	fill(c, false,
+		ItemStack{Slot: 0, Name: "minecraft:oak_planks", Count: 3},
+		ItemStack{Slot: 1, Name: "minecraft:stick", Count: 2},
+		ItemStack{Slot: 2, Name: "minecraft:oak_planks", Count: 5},
+	)
 
 	if got := c.Count("oak_planks"); got != 8 {
 		t.Errorf("Count(oak_planks) = %d, want 8", got)
@@ -160,11 +166,50 @@ func TestContainerFindAndCount(t *testing.T) {
 func TestContainerSlotsIsACopy(t *testing.T) {
 	c := NewContainer()
 	c.Open(1, 0, "")
-	c.ReplaceAll([]ItemStack{{Slot: 0, Name: "minecraft:dirt", Count: 1}}, false)
+	fill(c, false, ItemStack{Slot: 0, Name: "minecraft:dirt", Count: 1})
 
 	got := c.Slots()
 	got[0].Count = 99
 	if again := c.Slots(); again[0].Count != 1 {
 		t.Error("Slots() handed out the internal slice — a caller mutated the container")
+	}
+}
+
+// A window's shape has to survive a partial decode.
+//
+// This is a real failure, found live: the bot held potions, potions carry data
+// components, and readSlot cannot skip those — so the scan stopped at slot 32
+// of a 41-slot brewing stand. Sizing the layout from the decoded items made the
+// container's own slot count come out as 41-36=5 one moment and 32-36 clamped
+// to 0 the next, and every slot lookup then searched from the wrong floor with
+// nothing reported.
+func TestSizeSurvivesATruncatedDecode(t *testing.T) {
+	c := NewContainer()
+	c.Open(1, 11, "Brewing Stand")
+
+	// The server declared 41 slots; decoding stopped after 32.
+	decoded := make([]ItemStack, 32)
+	for i := range decoded {
+		decoded[i] = ItemStack{Slot: i}
+	}
+	c.ReplaceAll(decoded, 41, true)
+
+	if got := c.Size(); got != 41 {
+		t.Errorf("Size() = %d, want the declared 41 — the layout must not shrink "+
+			"because an item could not be decoded", got)
+	}
+	if !c.Trimmed() {
+		t.Error("Trimmed() should report that the contents are incomplete")
+	}
+	// The slots that could not be decoded read as empty rather than out of range,
+	// so a caller addressing them gets "nothing there" instead of a false
+	// "outside the window".
+	for _, slot := range []int{32, 40} {
+		if _, ok := c.Slot(slot); !ok {
+			t.Errorf("Slot(%d) is inside a 41-slot window and should be addressable", slot)
+		}
+	}
+	if _, ok := c.Slot(41); ok {
+		t.Error("Slot(41) is outside a 41-slot window")
 	}
 }

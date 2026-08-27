@@ -595,3 +595,17 @@ func (b *stubBot) RecipeFor(name string) (understudy.RecipeID, bool) {
 	return 0, false
 }
 func (b *stubBot) KnownRecipes() int { return 984 }
+
+func (b *stubBot) ActivateBeacon(ctx context.Context, payment string, primary, secondary int32) error {
+	b.record("ActivateBeacon")
+	b.lastButton = primary
+	return b.err
+}
+
+func (b *stubBot) ApplyToMap(ctx context.Context, mapItem, applied string) (understudy.ItemStack, error) {
+	b.record("ApplyToMap")
+	if b.err != nil {
+		return understudy.ItemStack{}, b.err
+	}
+	return understudy.ItemStack{Name: "minecraft:filled_map", Count: 1}, nil
+}

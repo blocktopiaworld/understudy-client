@@ -57,6 +57,7 @@ func v1_21_4() *protocol.Version {
 			SBPlayCraftRecipeRequest:    37,
 			SBPlayContainerButton:       15,
 			SBPlayNameItem:              46,
+			SBPlaySetBeaconEffect:       50,
 			SBPlaySetCreativeSlot:       54,
 			SBPlayPlayerInput:           41,
 			SBPlayEntityAction:          40,

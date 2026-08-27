@@ -57,24 +57,6 @@ const (
 	recipeSmithing  = 4
 )
 
-// componentSkip describes how to step over a data component's payload.
-//
-// Components cannot be skipped in general — their shape depends on the type and
-// minecraft-data defines none of them — so this covers only the ones that
-// actually appear in a recipe book, and an unknown type stops the decode rather
-// than guessing a length. Stopping loses the rest of the book; guessing would
-// fill it with plausible nonsense.
-var componentSkip = map[int32]func(*protocol.Reader){
-	// 53 is the suspicious-stew effects list: a count, then a pair of VarInts
-	// per effect. It is the only component in the vanilla 26.1 book.
-	53: func(r *protocol.Reader) {
-		for range r.VarInt() {
-			r.VarInt()
-			r.VarInt()
-		}
-	},
-}
-
 // RecipeFor returns the recipe id that produces a named item.
 //
 // The lookup is by what the recipe *makes*, which is the question a caller
@@ -319,13 +301,9 @@ func (c *Client) readDisplayStack(r *protocol.Reader) (string, error) {
 	}
 	for range added {
 		kind := r.VarInt()
-		skip, ok := componentSkip[kind]
-		if !ok {
-			return "", fmt.Errorf(
-				"item %s carries data component %d, which this client cannot skip",
-				c.v.ItemName(id), kind)
+		if err := skipComponent(c.v, r, kind, nil); err != nil {
+			return "", fmt.Errorf("item %s: %w", c.v.ItemName(id), err)
 		}
-		skip(r)
 	}
 	for range removed {
 		r.VarInt()

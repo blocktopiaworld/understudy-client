@@ -21,7 +21,7 @@ func openWindowWith(t *testing.T, kind WindowType, own int, items map[int]ItemSt
 		item.Slot = slot
 		slots[slot] = item
 	}
-	c.window.ReplaceAll(slots, false)
+	c.window.ReplaceAll(slots, len(slots), false)
 	return c
 }
 

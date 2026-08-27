@@ -144,6 +144,8 @@ type Bot interface {
 	UpgradeInSmithingTable(ctx context.Context, template, base, addition string) (understudy.ItemStack, error)
 	Enchant(ctx context.Context, item string, level int32) (understudy.ItemStack, error)
 	Brew(ctx context.Context, bottle, ingredient, fuel string, count int) error
+	ActivateBeacon(ctx context.Context, payment string, primary, secondary int32) error
+	ApplyToMap(ctx context.Context, mapItem, applied string) (understudy.ItemStack, error)
 	ShootAt(ctx context.Context, x, y, z float64, draw time.Duration) error
 	ShootBlock(ctx context.Context, x, y, z int32, draw time.Duration) error
 	ShootNearest(ctx context.Context, typeName string, draw time.Duration) (understudy.Entity, error)

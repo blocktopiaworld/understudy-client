@@ -3,6 +3,8 @@ package understudy
 import (
 	"errors"
 	"fmt"
+	"os"
+	"sync"
 
 	"github.com/blocktopia/understudy-client/internal/inventory"
 	"github.com/blocktopia/understudy-client/protocol"
@@ -211,11 +213,44 @@ func readSlotFinal(v *protocol.Version, r *protocol.Reader) (ItemStack, error) {
 		return ItemStack{}, nil
 	}
 	id := r.VarInt()
+	added := r.VarInt()
+	removed := r.VarInt()
 	if err := r.Err(); err != nil {
 		return ItemStack{}, err
 	}
-	// Whatever components follow are the rest of the packet; drop them.
-	return ItemStack{ID: id, Name: v.ItemName(id), Count: count}, nil
+	// Components are read rather than dropped, even though this is the last
+	// field of its packet and nothing after it needs the alignment.
+	//
+	// Not for the alignment: for the potion id. A brewing result arrives as a
+	// set_slot, and every potion is named "minecraft:potion" — so dropping the
+	// components here left the caller unable to tell a water bottle from what
+	// it had just brewed, and Brew waited out its whole timeout on a change it
+	// could not see.
+	stack := ItemStack{ID: id, Name: v.ItemName(id), Count: count, Potion: inventory.NoPotion}
+	readComponentsBestEffort(v, r, added, removed, &stack)
+	return stack, nil
+}
+
+// readComponentsBestEffort reads what it can of an item's components and stops
+// quietly at the first one it cannot.
+//
+// Deliberately returns nothing. This is only used where the item is the last
+// field of its packet, so losing alignment costs nothing downstream — and
+// having no error to return is what stops the caller pretending to handle one.
+// Where alignment *does* matter, readSlot reports instead.
+func readComponentsBestEffort(v *protocol.Version, r *protocol.Reader, added, removed int32, into *ItemStack) {
+	for range added {
+		kind := r.VarInt()
+		if r.Err() != nil {
+			return
+		}
+		if err := skipComponent(v, r, kind, into); err != nil {
+			return
+		}
+	}
+	for range removed {
+		r.VarInt()
+	}
 }
 
 // readSlot decodes one item stack.
@@ -239,10 +274,18 @@ func readSlot(v *protocol.Version, r *protocol.Reader) (ItemStack, error) {
 	if err := r.Err(); err != nil {
 		return ItemStack{}, err
 	}
-	if added > 0 {
-		return ItemStack{}, fmt.Errorf(
-			"item %s carries %d data components, which this client cannot skip",
-			v.ItemName(id), added)
+	// Components have no length prefix, so one that cannot be decoded cannot be
+	// skipped either — the reader would not know where the next field starts.
+	// The ones that turn up in testing are handled; anything else stops here.
+	stack := ItemStack{ID: id, Name: v.ItemName(id), Count: count, Potion: inventory.NoPotion}
+	for range added {
+		kind := r.VarInt()
+		if err := r.Err(); err != nil {
+			return ItemStack{}, err
+		}
+		if err := skipComponent(v, r, kind, &stack); err != nil {
+			return ItemStack{}, fmt.Errorf("item %s: %w", v.ItemName(id), err)
+		}
 	}
 	// Removed components are just a list of type IDs, which *can* be skipped.
 	for range removed {
@@ -251,7 +294,7 @@ func readSlot(v *protocol.Version, r *protocol.Reader) (ItemStack, error) {
 	if err := r.Err(); err != nil {
 		return ItemStack{}, err
 	}
-	return ItemStack{ID: id, Name: v.ItemName(id), Count: count}, nil
+	return stack, nil
 }
 
 // maxWindowSlots bounds a window_items count. The largest vanilla container is
@@ -283,6 +326,7 @@ func (c *Client) handleInventoryPacket(p protocol.Packet) (bool, error) {
 }
 
 func (c *Client) handleWindowItems(p protocol.Packet) error {
+	dumpWindowItems(p.Data)
 	r := p.Reader()
 	windowID := r.VarInt()
 	stateID := r.VarInt()
@@ -321,7 +365,7 @@ func (c *Client) handleWindowItems(p protocol.Packet) error {
 		items = append(items, item)
 	}
 	if toContainer {
-		c.window.ReplaceAll(items, truncated)
+		c.window.ReplaceAll(items, int(n), truncated)
 		return nil
 	}
 	c.inv.ReplaceAll(items, truncated)
@@ -380,4 +424,29 @@ func (c *Client) handleCollect(p protocol.Packet) error {
 // namespaced match, or a loose suffix one so "planks" finds "oak_planks".
 func matchesName(item ItemStack, name string) (exact, fuzzy bool) {
 	return inventory.Matches(item, name)
+}
+
+// dumpWindowItems writes a window_items payload when UNDERSTUDY_DUMP_WINDOW
+// names a file, keeping the largest seen.
+//
+// Same purpose as the chunk, trade and recipe dumps: data components have no
+// published encoding, so the only way to learn one is against bytes whose
+// meaning is already known.
+var (
+	dumpWindowMu   sync.Mutex
+	dumpWindowBest int
+)
+
+func dumpWindowItems(payload []byte) {
+	path := os.Getenv("UNDERSTUDY_DUMP_WINDOW")
+	if path == "" {
+		return
+	}
+	dumpWindowMu.Lock()
+	defer dumpWindowMu.Unlock()
+	if len(payload) <= dumpWindowBest {
+		return
+	}
+	dumpWindowBest = len(payload)
+	_ = os.WriteFile(path, payload, 0o644) //nolint:gosec // G703: operator debug path
 }

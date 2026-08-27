@@ -46,7 +46,19 @@ type ItemStack struct {
 	ID    int32  `json:"id"`
 	Name  string `json:"name"`
 	Count int32  `json:"count"`
+
+	// Potion is the potion-type id carried by a potion's contents component,
+	// or -1 for an item that has none.
+	//
+	// It is here because the item *name* cannot tell potions apart: a water
+	// bottle, an awkward potion and a potion of strength are all
+	// "minecraft:potion", and only the component differs. Anything watching a
+	// brewing stand for progress has nothing else to compare.
+	Potion int32 `json:"potion,omitempty"`
 }
+
+// NoPotion marks an item that carries no potion contents.
+const NoPotion = -1
 
 // Empty reports whether the slot holds nothing.
 func (i ItemStack) Empty() bool { return i.Count <= 0 }

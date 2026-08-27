@@ -36,7 +36,7 @@ func TestContainerOwnSlotsFollowsTheLayoutRule(t *testing.T) {
 			for i := range slots {
 				slots[i] = ItemStack{Slot: i}
 			}
-			c.window.ReplaceAll(slots, false)
+			c.window.ReplaceAll(slots, len(slots), false)
 
 			if got := c.ContainerOwnSlots(); got != tc.wantOwn {
 				t.Errorf("ContainerOwnSlots() = %d for a %d-slot window, want %d",
@@ -117,4 +117,29 @@ func contains(haystack, needle string) bool {
 		}
 	}
 	return false
+}
+
+// The same failure from the client's side: a truncated decode must not change
+// where the player's rows begin.
+func TestOwnSlotsSurviveATruncatedDecode(t *testing.T) {
+	c := newTestClient(t)
+	c.window.Open(1, int32(WindowBrewingStand), "Brewing Stand")
+
+	decoded := make([]ItemStack, 32) // stopped early on a potion's components
+	for i := range decoded {
+		decoded[i] = ItemStack{Slot: i}
+	}
+	c.window.ReplaceAll(decoded, 41, true)
+
+	if got := c.ContainerOwnSlots(); got != 5 {
+		t.Errorf("ContainerOwnSlots() = %d, want 5 — sizing from the decoded items "+
+			"instead of the declared count made this 0, and every slot lookup "+
+			"then searched from the wrong floor", got)
+	}
+	if got := c.PlayerSlotsStart(); got != 5 {
+		t.Errorf("PlayerSlotsStart() = %d, want 5", got)
+	}
+	if !c.ContainerTruncated() {
+		t.Error("ContainerTruncated() should surface that the contents are partial")
+	}
 }

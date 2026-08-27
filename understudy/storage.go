@@ -286,3 +286,26 @@ func (c *Client) CountInContainerOnly(name string) int32 {
 // player has 36, so nothing legitimate needs more than this — it exists so a
 // container that refuses to accept items cannot spin forever.
 const maxStackMoves = 128
+
+// CountInPlayerRows totals a named item in the player's own rows of the open
+// window.
+//
+// The third member of a set that needs all three. While a window is open the
+// player's items live in *that window's* slots, and the separate inventory view
+// is a different thing — so checking the player's side of a transfer through
+// the wrong one reads as "nothing moved" when it plainly did.
+//
+//	CountInContainer      both sides of the window
+//	CountInContainerOnly  the container's own slots
+//	CountInPlayerRows     the player's rows
+func (c *Client) CountInPlayerRows(name string) int32 {
+	return c.countInRange(name, c.PlayerSlotsStart(), c.window.Size())
+}
+
+// PlayerRowsEmptyOf reports whether the player's rows hold none of an item.
+//
+// Reads better than comparing a count to zero at a call site, and says which
+// side of the window it means — which is the mistake it exists to prevent.
+func (c *Client) PlayerRowsEmptyOf(name string) bool {
+	return c.CountInPlayerRows(name) == 0
+}
