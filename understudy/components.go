@@ -28,17 +28,12 @@ import (
 // a reading is right is that the whole packet then decodes and lands on its
 // final byte — a wrong width anywhere leaves the remainder as nonsense.
 //
-// Only the components that actually turn up in testing are here — seventy of
-// the eighty-one that exist. The right answer for the other eleven is still to
-// stop and say so, now with the name attached: see component_names.go.
-//
-// Those eleven are use_effects, creative_slot_lock, piercing_weapon,
-// kinetic_weapon, swing_animation, additional_trade_cost, dye,
-// map_post_processing, debug_stick_state, lock and container_loot. Two of them
-// — creative_slot_lock and map_post_processing — this server rejects outright,
-// so they may not exist on 26.1 at all; the rest simply never turned up on an
-// item a command could build. Each will announce itself by name the first time
-// one does.
+// This handles 107 of the 110 types the server registers. The three left are
+// creative_slot_lock, additional_trade_cost and map_post_processing, and they
+// are left deliberately: the command cannot set them, and none of the 1506
+// items in the server's own component report carries one. They hold registry
+// ids without, as far as anything reachable here shows, ever reaching an item.
+// If one ever does it will stop the scan and say its name.
 
 // Component type ids, as observed on 26.1.
 const (
@@ -47,6 +42,7 @@ const (
 	componentMaxDamage              = 2
 	componentDamage                 = 3
 	componentUnbreakable            = 4
+	componentUseEffects             = 5
 	componentCustomName             = 6
 	componentMinimumAttackCharge    = 7
 	componentDamageType             = 8
@@ -78,7 +74,11 @@ const (
 	componentTooltipStyle           = 35
 	componentDeathProtection        = 36
 	componentBlocksAttacks          = 37
+	componentPiercingWeapon         = 38
+	componentKineticWeapon          = 39
+	componentSwingAnimation         = 40
 	componentStoredEnchantments     = 42
+	componentDye                    = 43
 	componentDyedColor              = 44
 	componentMapColor               = 45
 	componentMapID                  = 46
@@ -91,6 +91,7 @@ const (
 	componentWritableBook           = 54
 	componentWrittenBook            = 55
 	componentTrim                   = 56
+	componentDebugStickState        = 57
 	componentEntityData             = 58
 	componentBucketEntityData       = 59
 	componentBlockEntityData        = 60
@@ -111,7 +112,16 @@ const (
 	componentContainer              = 75
 	componentBlockState             = 76
 	componentBees                   = 77
+	componentLock                   = 78
+	componentContainerLoot          = 79
 	componentBreakSound             = 80
+
+	// The entity variants occupy 81 through 109. They are not item properties
+	// as such — they describe a mob — but an item carries them all the same: a
+	// bucket of tropical fish holds its pattern and both its colours, an
+	// axolotl bucket its variant.
+	componentFirstEntityVariant = 81
+	componentLastEntityVariant  = 109
 )
 
 // skipComponent steps over one data component's payload.
@@ -144,7 +154,8 @@ func skipComponent(v *protocol.Version, r *protocol.Reader, kind int32, into *It
 		return r.Err()
 	case componentCustomData, componentCustomName, componentItemName,
 		componentIntangibleProjectile, componentMapDecorations,
-		componentBucketEntityData, componentRecipes:
+		componentBucketEntityData, componentRecipes, componentDebugStickState,
+		componentLock, componentContainerLoot:
 		// A nameless NBT tag. custom_data is a whole compound, the two names
 		// are text components, a knowledge book's recipes are a list of strings
 		// — all step with the same walker.
@@ -154,6 +165,21 @@ func skipComponent(v *protocol.Version, r *protocol.Reader, kind int32, into *It
 		// empty map it sends `0a 00`, a nameless empty compound, where a true
 		// marker like glider sends nothing at all.
 		return skipNBT(r)
+	case componentSwingAnimation:
+		// The animation to play and how long it runs. A spear's stab arrives as
+		// type 2 for 19 ticks; the seven-tick stab set here as 2 and 7.
+		r.VarInt()
+		r.VarInt()
+		return r.Err()
+	case componentUseEffects:
+		// Whether the holder may sprint, whether using it vibrates, and how it
+		// scales their speed. Read back as the false, true and 0.25 that went
+		// in — and the field set matches what the server's own item report
+		// gives a spear.
+		r.Bool()
+		r.Bool()
+		r.F32()
+		return r.Err()
 	case componentGlintOverride:
 		// One bool. Whether the item shimmers, forced either way.
 		r.Bool()
@@ -167,10 +193,10 @@ func skipComponent(v *protocol.Version, r *protocol.Reader, kind int32, into *It
 		// at client-side resources the server never resolves.
 		_ = r.String()
 		return r.Err()
-	case componentOminousAmplifier, componentBaseColor:
-		// Plain VarInts rather than holders — an amplifier is a number and a
-		// base colour is one of the sixteen dyes, neither of which can be
-		// defined inline.
+	case componentOminousAmplifier, componentBaseColor, componentDye:
+		// Plain VarInts rather than holders — an amplifier is a number and the
+		// two colours are one of the sixteen dyes, none of which can be defined
+		// inline. A leather helmet dyed red came back as 14, light blue as 3.
 		r.VarInt()
 		return r.Err()
 	case componentInstrument, componentJukeboxPlayable, componentDamageType,
@@ -252,6 +278,10 @@ func skipShapedComponent(v *protocol.Version, r *protocol.Reader, kind int32) er
 		return skipBlocksAttacks(r)
 	case componentBees:
 		return skipBees(r)
+	case componentPiercingWeapon:
+		return skipPiercingWeapon(r)
+	case componentKineticWeapon:
+		return skipKineticWeapon(r)
 	case componentTrim:
 		return skipTrim(r)
 	case componentContainer:
@@ -297,7 +327,7 @@ func skipShapedComponent(v *protocol.Version, r *protocol.Reader, kind int32) er
 		// width that happened to fit.
 		return skipVarIntPairs(r)
 	default:
-		return fmt.Errorf("data component %s has no known encoding", componentName(kind))
+		return skipEntityVariant(r, kind)
 	}
 }
 
@@ -483,6 +513,87 @@ func skipBlocksAttacks(r *protocol.Reader) error {
 		_ = r.String() // the damage type tag that bypasses blocking
 	}
 	for _, what := range []string{"block sound", "disable sound"} {
+		if r.Bool() {
+			if err := skipHolder(r, what); err != nil {
+				return err
+			}
+		}
+	}
+	return r.Err()
+}
+
+// skipEntityVariant steps over one of the twenty-nine components that describe
+// a mob rather than an item — which an item carries all the same, since a
+// bucket of tropical fish holds its pattern and both its colours.
+//
+// Every one is a single VarInt, and — unlike almost everything else that
+// references a registry — a plain id rather than a holder. villager/variant
+// "plains" arrives as 2, which is exactly its protocol id, and fox/variant
+// "red" arrives as 0. Reading these as holders would work byte for byte and
+// then reject that 0 as an inline definition, on a value a bucket of fish
+// produces routinely.
+func skipEntityVariant(r *protocol.Reader, kind int32) error {
+	if kind < componentFirstEntityVariant || kind > componentLastEntityVariant {
+		return fmt.Errorf("data component %s has no known encoding", componentName(kind))
+	}
+	r.VarInt()
+	return r.Err()
+}
+
+// skipPiercingWeapon steps over a spear's piercing.
+//
+// Two scalars, then the two sounds it makes, each optional. Set empty it is
+// four bytes and set with both sounds it is eight, which is what shows the
+// sounds are optionals and not a fixed pair — a single sample cannot.
+//
+// The two leading scalars are whatever the item report leaves out of a spear's
+// entry, so they went unnamed. They are one byte each in every sample and no
+// grouping that treats them as anything wider leaves room for the sounds.
+func skipPiercingWeapon(r *protocol.Reader) error {
+	r.VarInt()
+	r.VarInt()
+	for _, what := range []string{"piercing sound", "piercing hit sound"} {
+		if r.Bool() {
+			if err := skipHolder(r, what); err != nil {
+				return err
+			}
+		}
+	}
+	return r.Err()
+}
+
+// skipKineticWeapon steps over what a spear does when thrown or charged.
+//
+// Read by difference rather than by guessing: eleven captures of the same item,
+// each setting one more field than the last, so every byte that moved could be
+// tied to the field that moved it. The names come from the server's own item
+// report for iron_spear.
+//
+//	a leading VarInt        never settable, ten on everything seen
+//	delay_ticks             12 on a spear
+//	dismount_conditions     optional: ticks, then two floats
+//	knockback_conditions    optional: the same shape
+//	damage_conditions       optional: the same shape again
+//	forward_movement        0.38
+//	damage_multiplier       0.95
+//	sound, hit_sound        each optional
+//
+// The full spear-shaped sample is forty-eight bytes and every field set comes
+// back exactly — 50 and 11.0, 135 and 5.1, 225 and 4.6, 0.38, 0.95 — landing on
+// the last byte.
+func skipKineticWeapon(r *protocol.Reader) error {
+	r.VarInt() // unnamed, defaults to ten
+	r.VarInt() // delay ticks
+	for range 3 {
+		if r.Bool() {
+			r.VarInt() // maximum duration in ticks
+			r.F32()
+			r.F32()
+		}
+	}
+	r.F32() // forward movement
+	r.F32() // damage multiplier
+	for _, what := range []string{"kinetic sound", "kinetic hit sound"} {
 		if r.Bool() {
 			if err := skipHolder(r, what); err != nil {
 				return err

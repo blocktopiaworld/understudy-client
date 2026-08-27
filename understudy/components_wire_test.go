@@ -2,6 +2,7 @@ package understudy
 
 import (
 	"encoding/hex"
+	"fmt"
 	"testing"
 
 	"github.com/blocktopia/understudy-client/protocol"
@@ -183,8 +184,119 @@ func TestComponentPayloadsDecodeWhole(t *testing.T) {
 		{80, "break_sound",
 			"a sound holder",
 			[]string{"b90c"}},
+		{5, "use_effects",
+			"cannot sprint, vibrates, quarter speed",
+			[]string{"00013e800000"}},
+		{38, "piercing_weapon",
+			"empty, and with both sounds — which is what makes them optional",
+			[]string{"01000000", "010001f50b01f40b"}},
+		{39, "kinetic_weapon",
+			"defaults; each condition block alone; each sound alone; and a whole spear",
+			[]string{"0a0700000000000000400000000000", "0a070000003f000000400000000000", "0a07000000000000003f8000000000", "0a00000000000000003f8000000000", "0a00000000000000003f80000001f30b00", "0a00000000000000003f8000000001f40b", "0a00013241300000000000000000000000003f8000000000", "0a00000001e1010000000040933333000000003f8000000000", "0a000001870140a333330000000000000000003f8000000000", "0a0c0132413000000000000001870140a333330000000001e10100000000409333333ec28f5c3f73333301f30b01f40b"}},
+		{40, "swing_animation",
+			"a seven-tick stab",
+			[]string{"0207"}},
+		{43, "dye",
+			"a leather helmet dyed red (14), and light blue (3)",
+			[]string{"0e", "03"}},
+		{57, "debug_stick_state",
+			"empty, and oak_log/axis",
+			[]string{"0a0800116d696e6563726166743a6f616b5f6c6f6700046178697300"}},
+		{78, "lock",
+			"empty, and locked to a diamond",
+			[]string{"0a00", "0a0800056974656d7300116d696e6563726166743a6469616d6f6e6400"}},
+		{79, "container_loot",
+			"a dungeon chest, and one with a seed",
+			[]string{"0a08000a6c6f6f745f7461626c65001f6d696e6563726166743a6368657374732f73696d706c655f64756e67656f6e00", "0a04000473656564000000000000002a08000a6c6f6f745f7461626c6500246d696e6563726166743a6368657374732f6162616e646f6e65645f6d696e65736861667400"}},
+		{81, "villager/variant",
+			"a plain registry id, not a holder",
+			[]string{"00", "02"}},
+		{82, "wolf/variant",
+			"a plain registry id, not a holder",
+			[]string{"03", "06"}},
+		{83, "wolf/sound_variant",
+			"a plain registry id, not a holder",
+			[]string{"01", "02"}},
+		{84, "wolf/collar",
+			"a plain registry id, not a holder",
+			[]string{"0e", "0b"}},
+		{85, "fox/variant",
+			"a plain registry id, not a holder",
+			[]string{"00", "01"}},
+		{86, "salmon/size",
+			"a plain registry id, not a holder",
+			[]string{"00", "02"}},
+		{87, "parrot/variant",
+			"a plain registry id, not a holder",
+			[]string{"00", "02"}},
+		{88, "tropical_fish/pattern",
+			"a plain registry id, not a holder",
+			[]string{"00", "8108"}},
+		{89, "tropical_fish/base_color",
+			"a plain registry id, not a holder",
+			[]string{"0e", "00"}},
+		{90, "tropical_fish/pattern_color",
+			"a plain registry id, not a holder",
+			[]string{"01", "0b"}},
+		{91, "mooshroom/variant",
+			"a plain registry id, not a holder",
+			[]string{"00", "01"}},
+		{92, "rabbit/variant",
+			"a plain registry id, not a holder",
+			[]string{"00", "63"}},
+		{93, "pig/variant",
+			"a plain registry id, not a holder",
+			[]string{"01", "00"}},
+		{94, "pig/sound_variant",
+			"a plain registry id, not a holder",
+			[]string{"01", "02"}},
+		{95, "cow/variant",
+			"a plain registry id, not a holder",
+			[]string{"01", "00"}},
+		{96, "cow/sound_variant",
+			"a plain registry id, not a holder",
+			[]string{"01", "00"}},
+		{97, "chicken/variant",
+			"a plain registry id, not a holder",
+			[]string{"01", "00"}},
+		{98, "chicken/sound_variant",
+			"a plain registry id, not a holder",
+			[]string{"00"}},
+		{99, "zombie_nautilus/variant",
+			"a plain registry id, not a holder",
+			[]string{"00", "01"}},
+		{100, "frog/variant",
+			"a plain registry id, not a holder",
+			[]string{"01", "00"}},
+		{101, "horse/variant",
+			"a plain registry id, not a holder",
+			[]string{"00", "04"}},
+		{102, "painting/variant",
+			"a plain registry id, not a holder",
+			[]string{"19"}},
+		{103, "llama/variant",
+			"a plain registry id, not a holder",
+			[]string{"00"}},
+		{104, "axolotl/variant",
+			"a plain registry id, not a holder",
+			[]string{"00"}},
+		{105, "cat/variant",
+			"a plain registry id, not a holder",
+			[]string{"09"}},
+		{106, "cat/sound_variant",
+			"a plain registry id, not a holder",
+			[]string{"00"}},
+		{107, "cat/collar",
+			"a plain registry id, not a holder",
+			[]string{"0e"}},
+		{108, "sheep/color",
+			"a plain registry id, not a holder",
+			[]string{"0e"}},
+		{109, "shulker/color",
+			"a plain registry id, not a holder",
+			[]string{"0e"}},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
+		t.Run(fmt.Sprintf("%d_%s", tc.kind, tc.name), func(t *testing.T) {
 			for _, s := range tc.samples {
 				payload, err := hex.DecodeString(s)
 				if err != nil {
@@ -228,7 +340,7 @@ func TestComponentsRefuseWhatTheyCannotSkip(t *testing.T) {
 			"never been seen set",
 		},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
+		t.Run(fmt.Sprintf("%d_%s", tc.kind, tc.name), func(t *testing.T) {
 			payload, err := hex.DecodeString(tc.payload)
 			if err != nil {
 				t.Fatalf("bad sample: %v", err)
@@ -242,5 +354,67 @@ func TestComponentsRefuseWhatTheyCannotSkip(t *testing.T) {
 				t.Errorf("error %q does not say %q", err, tc.want)
 			}
 		})
+	}
+}
+
+// Every type the server registers must be either decoded or deliberately not.
+//
+// The point is the second half. It is easy to add a component and easy to
+// forget one, and a forgotten one does not fail loudly here — it fails in a
+// window scan months later, as a bot that cannot see its own inventory. So the
+// exceptions are named, and a new id appearing outside that list fails now.
+//
+// The three named below hold registry ids without reaching an item: the command
+// refuses to set them, and none of the 1506 items in the server's own component
+// report carries one.
+func TestEveryRegisteredComponentIsAccountedFor(t *testing.T) {
+	v := testVersion(t)
+	unhandled := map[int32]string{
+		20: "creative_slot_lock",
+		41: "additional_trade_cost",
+		48: "map_post_processing",
+	}
+	for kind := int32(0); kind <= componentLastEntityVariant; kind++ {
+		// An empty payload: anything with a known encoding fails trying to read
+		// its first field, and anything without says so by name instead.
+		err := skipComponent(v, protocol.NewReader(nil), kind, nil)
+		missing := err != nil && contains(err.Error(), "has no known encoding")
+
+		if name, expected := unhandled[kind]; expected {
+			if !missing {
+				t.Errorf("component %d (%s) is now decoded — remove it from the "+
+					"exception list and give it a payload sample", kind, name)
+			}
+			continue
+		}
+		if missing {
+			t.Errorf("component %d (%s) has no encoding and is not a named "+
+				"exception: %v", kind, componentName(kind), err)
+		}
+	}
+}
+
+// The names are the registry's, so a gap in them means the report and the code
+// have drifted apart.
+func TestComponentNamesCoverTheRegistry(t *testing.T) {
+	if got := len(componentNames); got != 110 {
+		t.Errorf("componentNames has %d entries, want the 110 the 26.1 registry "+
+			"report lists", got)
+	}
+	for kind := int32(0); kind <= componentLastEntityVariant; kind++ {
+		if _, ok := componentNames[kind]; !ok {
+			t.Errorf("component %d has no name, so an error about it would be a "+
+				"bare number", kind)
+		}
+	}
+	// The four the constant-pool reading got wrong, which nothing caught until
+	// the registry report was generated.
+	for kind, want := range map[int32]string{
+		81: "villager/variant", 82: "wolf/variant",
+		83: "wolf/sound_variant", 84: "wolf/collar",
+	} {
+		if got := componentNames[kind]; got != want {
+			t.Errorf("component %d is named %q, want %q", kind, got, want)
+		}
 	}
 }
