@@ -121,6 +121,8 @@ type Version struct {
 	entityNames []string
 	itemNames   []string
 	itemStacks  []int32
+	shapes      [][]Box
+	shapeRuns   [][3]int32
 	solidStates [][2]int32
 	waterStates [][2]int32
 	lavaStates  [][2]int32
@@ -152,6 +154,11 @@ type VersionSpec struct {
 	// ItemStacks is indexed by wire ID. A non-positive entry means the default.
 	ItemStacks []int32
 
+	// Shapes holds the distinct collision shapes, indexed by ShapeRuns.
+	Shapes [][]Box
+	// ShapeRuns maps block-state ranges to a shape, as sorted {lo, hi, shape}.
+	ShapeRuns [][3]int32
+
 	// Block-state classification, as sorted inclusive [lo, hi] ranges.
 	Solid [][2]int32
 	Water [][2]int32
@@ -170,6 +177,8 @@ func NewVersion(spec VersionSpec) *Version {
 		entityNames: spec.EntityNames,
 		itemNames:   spec.ItemNames,
 		itemStacks:  spec.ItemStacks,
+		shapes:      spec.Shapes,
+		shapeRuns:   spec.ShapeRuns,
 		solidStates: spec.Solid,
 		waterStates: spec.Water,
 		lavaStates:  spec.Lava,

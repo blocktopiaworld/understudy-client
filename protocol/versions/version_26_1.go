@@ -85,6 +85,8 @@ func v26_1() *protocol.Version {
 		EntityNames: v26_1EntityNames,
 		ItemNames:   v26_1ItemNames,
 		ItemStacks:  v26_1ItemStacks,
+		Shapes:      v26_1Shapes,
+		ShapeRuns:   v26_1ShapeRuns,
 		Solid:       v26_1Solid,
 		Water:       v26_1Water,
 		Lava:        v26_1Lava,
