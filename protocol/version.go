@@ -131,6 +131,11 @@ type Version struct {
 	// established.
 	componentIDs map[int32]int32
 
+	// slotDisplayIDs maps this version's slot display kinds to canonical ones.
+	// Another registry that moves: 26.1 has eleven kinds where 1.21.11 has
+	// eight, so composite is 10 on one and 7 on the other.
+	slotDisplayIDs map[int32]int32
+
 	// components describes how this version encodes component payloads, which
 	// is a separate question from which id is which. Knowing the ids is not
 	// enough: 1.21.11 writes an item nested in a component count-first where
@@ -184,6 +189,10 @@ type VersionSpec struct {
 	// minecraft-data.
 	ComponentIDs map[int32]int32
 
+	// SlotDisplayIDs maps this version's slot display kinds to canonical ones.
+	// Generated alongside ComponentIDs.
+	SlotDisplayIDs map[int32]int32
+
 	// EntityNames and ItemNames are indexed by wire ID; an empty string means
 	// the ID is unused in this version.
 	EntityNames []string
@@ -212,6 +221,7 @@ func NewVersion(spec VersionSpec) *Version {
 		Chunk:           spec.Chunk,
 		Packets:         spec.Packets,
 		componentIDs:    spec.ComponentIDs,
+		slotDisplayIDs:  spec.SlotDisplayIDs,
 		knowsComponents: spec.Components != nil,
 		components: func() ComponentEncoding {
 			if spec.Components == nil {
@@ -369,6 +379,16 @@ func unknownName(id int32) string {
 // everything after it.
 func (v *Version) ComponentKind(wire int32) (int32, bool) {
 	kind, ok := v.componentIDs[wire]
+	return kind, ok
+}
+
+// SlotDisplayKind translates a recipe book slot display kind into the canonical
+// one, reporting whether this version has an id for it.
+func (v *Version) SlotDisplayKind(wire int32) (int32, bool) {
+	if len(v.slotDisplayIDs) == 0 {
+		return wire, true // no table: the version is assumed canonical
+	}
+	kind, ok := v.slotDisplayIDs[wire]
 	return kind, ok
 }
 

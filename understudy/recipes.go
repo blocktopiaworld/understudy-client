@@ -231,7 +231,17 @@ func (c *Client) readSlotDisplay(r *protocol.Reader, depth int) (string, error) 
 	if depth > slotDisplayDepth {
 		return "", fmt.Errorf("slot display nested deeper than %d", slotDisplayDepth)
 	}
-	switch kind := r.VarInt(); kind {
+	// The kinds are registry indices and they move between versions: composite
+	// is 10 on 26.1 and 7 on 1.21.11, so a book read with the wrong table stops
+	// at the first composite ingredient — which is most of them, and is why
+	// 1.21.11 learned nothing at all rather than learning most of it.
+	wire := r.VarInt()
+	kind, known := c.v.SlotDisplayKind(wire)
+	if !known {
+		return "", fmt.Errorf("slot display kind %d on %s has no counterpart in "+
+			"the numbering this decoder knows", wire, c.v.Name)
+	}
+	switch kind {
 	case 0, 1: // empty, any_fuel
 		return "", nil
 	case 2: // with_any_potion

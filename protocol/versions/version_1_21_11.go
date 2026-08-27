@@ -90,10 +90,11 @@ func v1_21_11() *protocol.Version {
 			CBPlayChunkBatchStart:       12,
 			CBPlayChunkBatchFinished:    11,
 		},
-		EntityNames:  v1_21_11EntityNames,
-		ItemNames:    v1_21_11ItemNames,
-		ItemStacks:   v1_21_11ItemStacks,
-		ComponentIDs: v1_21_11ComponentIDs,
+		EntityNames:    v1_21_11EntityNames,
+		ItemNames:      v1_21_11ItemNames,
+		ItemStacks:     v1_21_11ItemStacks,
+		ComponentIDs:   v1_21_11ComponentIDs,
+		SlotDisplayIDs: v1_21_11SlotDisplayIDs,
 		// Measured against a vanilla 1.21.11 server: of sixty-seven components
 		// put on both it and 26.1, fifty-one are byte for byte identical and
 		// the rest differ in these three ways.

@@ -1,0 +1,13 @@
+{
+  "empty": 0,
+  "any_fuel": 1,
+  "with_any_potion": 2,
+  "only_with_component": 3,
+  "item": 4,
+  "item_stack": 5,
+  "tag": 6,
+  "dyed": 7,
+  "smithing_trim": 8,
+  "with_remainder": 9,
+  "composite": 10
+}

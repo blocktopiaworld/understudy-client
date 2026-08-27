@@ -10,9 +10,10 @@ func init() { protocol.Register(v26_1()) }
 
 func v26_1() *protocol.Version {
 	return protocol.NewVersion(protocol.VersionSpec{
-		Name:         "26.1",
-		Protocol:     775,
-		ComponentIDs: v26_1ComponentIDs,
+		Name:           "26.1",
+		Protocol:       775,
+		ComponentIDs:   v26_1ComponentIDs,
+		SlotDisplayIDs: v26_1SlotDisplayIDs,
 		// Every payload shape in understudy/components.go was read off a
 		// 26.1.2 server, so 26.1 is the version with no adjustments.
 		Components: &protocol.ComponentEncoding{},

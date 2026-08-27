@@ -114,3 +114,16 @@ var v1_21_11ComponentIDs = map[int32]int32{
 	102: 108, // sheep/color
 	103: 109, // shulker/color
 }
+
+// Slot display kinds for Minecraft 1.21.11, mapped to canonical ids the same
+// way and for the same reason: they are registry indices and they move.
+var v1_21_11SlotDisplayIDs = map[int32]int32{
+	0: 0,  // empty
+	1: 1,  // any_fuel
+	2: 4,  // item
+	3: 5,  // item_stack
+	4: 6,  // tag
+	5: 8,  // smithing_trim
+	6: 9,  // with_remainder
+	7: 10, // composite
+}

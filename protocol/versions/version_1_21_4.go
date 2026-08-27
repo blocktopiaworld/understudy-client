@@ -90,10 +90,11 @@ func v1_21_4() *protocol.Version {
 			CBPlayChunkBatchStart:       13,
 			CBPlayChunkBatchFinished:    12,
 		},
-		EntityNames:  v1_21_4EntityNames,
-		ItemNames:    v1_21_4ItemNames,
-		ItemStacks:   v1_21_4ItemStacks,
-		ComponentIDs: v1_21_4ComponentIDs,
+		EntityNames:    v1_21_4EntityNames,
+		ItemNames:      v1_21_4ItemNames,
+		ItemStacks:     v1_21_4ItemStacks,
+		ComponentIDs:   v1_21_4ComponentIDs,
+		SlotDisplayIDs: v1_21_4SlotDisplayIDs,
 		// Measured against a vanilla 1.21.4 server. It deviates from 26.1 in
 		// more ways than 1.21.11 does, and not a superset of them: registry
 		// references carry no leading flag here.

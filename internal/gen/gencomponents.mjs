@@ -37,11 +37,12 @@ if (!reportPath || !version || !outPath) {
 }
 
 const REGISTRY = 'minecraft:data_component_type'
+const SLOT_DISPLAY = 'minecraft:slot_display'
 
-function table(path) {
+function table(path, which = REGISTRY) {
   const registries = JSON.parse(fs.readFileSync(path, 'utf8'))
-  const registry = registries[REGISTRY]
-  if (!registry) throw new Error(`${path} has no ${REGISTRY}`)
+  const registry = registries[which]
+  if (!registry) throw new Error(`${path} has no ${which}`)
   const byName = new Map()
   for (const [name, entry] of Object.entries(registry.entries)) {
     byName.set(name.replace(/^minecraft:/, ''), entry.protocol_id)
@@ -77,6 +78,21 @@ const body = rows
   .map(([id, want, name]) => `\t${String(id).padStart(width)}: ${want}, // ${name}`)
   .join('\n')
 
+// Slot displays are a registry too, and they shifted the same way: 26.1 has
+// eleven kinds where 1.21.11 and 1.21.4 have eight, so composite is 10 on one
+// and 7 on the other. A recipe book decoded with the wrong table stops at the
+// first composite ingredient, which is most of them.
+const canonicalDisplays = new Map(Object.entries(JSON.parse(
+  fs.readFileSync(new URL('./canonical-slot-displays.json', import.meta.url), 'utf8'))))
+const displayRows = []
+for (const [name, id] of [...table(reportPath, SLOT_DISPLAY)].sort((a, b) => a[1] - b[1])) {
+  if (canonicalDisplays.has(name)) displayRows.push([id, canonicalDisplays.get(name), name])
+  else console.error(`${version}: slot display ${name} (${id}) has no canonical id`)
+}
+const displayBody = displayRows
+  .map(([id, want, name]) => `\t${id}: ${want}, // ${name}`)
+  .join('\n')
+
 fs.writeFileSync(
   outPath,
   `package versions
@@ -91,6 +107,12 @@ fs.writeFileSync(
 // from this map is a component this decoder has no shape for.
 var v${ident}ComponentIDs = map[int32]int32{
 ${body}
+}
+
+// Slot display kinds for Minecraft ${version}, mapped to canonical ids the same
+// way and for the same reason: they are registry indices and they move.
+var v${ident}SlotDisplayIDs = map[int32]int32{
+${displayBody}
 }
 `,
 )
