@@ -364,9 +364,11 @@ func TestComponentsRefuseWhatTheyCannotSkip(t *testing.T) {
 // window scan months later, as a bot that cannot see its own inventory. So the
 // exceptions are named, and a new id appearing outside that list fails now.
 //
-// The three named below hold registry ids without reaching an item: the command
-// refuses to set them, and none of the 1506 items in the server's own component
-// report carries one.
+// The three named below hold registry ids without reaching an item. That is
+// checked rather than assumed: each was chased down the route that should
+// produce it — a map locked at a cartography table, a villager trade under Hero
+// of the Village, a switch to creative — and in every case the item decoded
+// clean with no component on it. See components.go.
 func TestEveryRegisteredComponentIsAccountedFor(t *testing.T) {
 	v := testVersion(t)
 	unhandled := map[int32]string{

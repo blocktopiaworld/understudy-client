@@ -30,10 +30,20 @@ import (
 //
 // This handles 107 of the 110 types the server registers. The three left are
 // creative_slot_lock, additional_trade_cost and map_post_processing, and they
-// are left deliberately: the command cannot set them, and none of the 1506
-// items in the server's own component report carries one. They hold registry
-// ids without, as far as anything reachable here shows, ever reaching an item.
-// If one ever does it will stop the scan and say its name.
+// are left because they appear not to reach an item at all rather than because
+// they were hard to get to. /item refuses all three, none of the 1506 items in
+// the server's own component report carries one, and each was chased down the
+// route that should produce it:
+//
+//	map_post_processing    a real map locked at a cartography table — the
+//	                       output decodes clean, with no component on it
+//	additional_trade_cost  a villager trade under Hero of the Village — the
+//	                       merchant window decodes clean, so the discount lives
+//	                       in the offer rather than on the cost item
+//	creative_slot_lock     switching to creative — nothing appears
+//
+// They hold registry ids without riding on an item. If one ever does it will
+// stop the scan and say its name.
 
 // Component type ids, as observed on 26.1.
 const (
