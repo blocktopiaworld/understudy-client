@@ -28,50 +28,90 @@ import (
 // a reading is right is that the whole packet then decodes and lands on its
 // final byte — a wrong width anywhere leaves the remainder as nonsense.
 //
-// Only the components that actually turn up in testing are here — thirty-four
-// of the eighty-one that exist. The right answer for anything else is still to
+// Only the components that actually turn up in testing are here — seventy of
+// the eighty-one that exist. The right answer for the other eleven is still to
 // stop and say so, now with the name attached: see component_names.go.
+//
+// Those eleven are use_effects, creative_slot_lock, piercing_weapon,
+// kinetic_weapon, swing_animation, additional_trade_cost, dye,
+// map_post_processing, debug_stick_state, lock and container_loot. Two of them
+// — creative_slot_lock and map_post_processing — this server rejects outright,
+// so they may not exist on 26.1 at all; the rest simply never turned up on an
+// item a command could build. Each will announce itself by name the first time
+// one does.
 
 // Component type ids, as observed on 26.1.
 const (
-	componentCustomData          = 0
-	componentMaxStackSize        = 1
-	componentMaxDamage           = 2
-	componentDamage              = 3
-	componentUnbreakable         = 4
-	componentCustomName          = 6
-	componentItemName            = 9
-	componentLore                = 11
-	componentRarity              = 12
-	componentEnchantments        = 13
-	componentAttributeModifiers  = 16
-	componentCustomModelData     = 17
-	componentRepairCost          = 19
-	componentGlintOverride       = 21
-	componentStoredEnchantments  = 42
-	componentDyedColor           = 44
-	componentMapID               = 46
-	componentChargedProjectiles  = 49
-	componentBundleContents      = 50
-	componentPotionContents      = 51
-	componentPotionDurationScale = 52
-	componentStewEffects         = 53
-	componentWritableBook        = 54
-	componentWrittenBook         = 55
-	componentTrim                = 56
-	componentInstrument          = 61
-	componentOminousAmplifier    = 63
-	componentJukeboxPlayable     = 64
-	componentLodestoneTracker    = 67
-	componentFireworkExplosion   = 68
-	componentFireworks           = 69
-	componentProfile             = 70
-	componentNoteBlockSound      = 71
-	componentBannerPatterns      = 72
-	componentBaseColor           = 73
-	componentPotDecorations      = 74
-	componentContainer           = 75
-	componentBlockState          = 76
+	componentCustomData             = 0
+	componentMaxStackSize           = 1
+	componentMaxDamage              = 2
+	componentDamage                 = 3
+	componentUnbreakable            = 4
+	componentCustomName             = 6
+	componentMinimumAttackCharge    = 7
+	componentDamageType             = 8
+	componentItemName               = 9
+	componentItemModel              = 10
+	componentLore                   = 11
+	componentRarity                 = 12
+	componentEnchantments           = 13
+	componentCanPlaceOn             = 14
+	componentCanBreak               = 15
+	componentAttributeModifiers     = 16
+	componentCustomModelData        = 17
+	componentTooltipDisplay         = 18
+	componentRepairCost             = 19
+	componentGlintOverride          = 21
+	componentIntangibleProjectile   = 22
+	componentFood                   = 23
+	componentConsumable             = 24
+	componentUseRemainder           = 25
+	componentUseCooldown            = 26
+	componentDamageResistant        = 27
+	componentTool                   = 28
+	componentWeapon                 = 29
+	componentAttackRange            = 30
+	componentEnchantable            = 31
+	componentEquippable             = 32
+	componentRepairable             = 33
+	componentGlider                 = 34
+	componentTooltipStyle           = 35
+	componentDeathProtection        = 36
+	componentBlocksAttacks          = 37
+	componentStoredEnchantments     = 42
+	componentDyedColor              = 44
+	componentMapColor               = 45
+	componentMapID                  = 46
+	componentMapDecorations         = 47
+	componentChargedProjectiles     = 49
+	componentBundleContents         = 50
+	componentPotionContents         = 51
+	componentPotionDurationScale    = 52
+	componentStewEffects            = 53
+	componentWritableBook           = 54
+	componentWrittenBook            = 55
+	componentTrim                   = 56
+	componentEntityData             = 58
+	componentBucketEntityData       = 59
+	componentBlockEntityData        = 60
+	componentInstrument             = 61
+	componentProvidesTrimMaterial   = 62
+	componentOminousAmplifier       = 63
+	componentJukeboxPlayable        = 64
+	componentProvidesBannerPatterns = 65
+	componentRecipes                = 66
+	componentLodestoneTracker       = 67
+	componentFireworkExplosion      = 68
+	componentFireworks              = 69
+	componentProfile                = 70
+	componentNoteBlockSound         = 71
+	componentBannerPatterns         = 72
+	componentBaseColor              = 73
+	componentPotDecorations         = 74
+	componentContainer              = 75
+	componentBlockState             = 76
+	componentBees                   = 77
+	componentBreakSound             = 80
 )
 
 // skipComponent steps over one data component's payload.
@@ -86,7 +126,7 @@ func skipComponent(v *protocol.Version, r *protocol.Reader, kind int32, into *It
 		// No payload at all — the component's presence is the whole meaning.
 		return nil
 	case componentDamage, componentMaxStackSize, componentMaxDamage,
-		componentRarity, componentRepairCost, componentMapID:
+		componentRarity, componentRepairCost, componentMapID, componentEnchantable:
 		// Each a single VarInt. Confirmed with two samples apiece where the
 		// value crosses the one-to-two byte boundary: damage 37 and 1000,
 		// repair cost 3 and 300.
@@ -97,24 +137,34 @@ func skipComponent(v *protocol.Version, r *protocol.Reader, kind int32, into *It
 		// story for anything that has been through an anvil.
 		r.VarInt()
 		return r.Err()
-	case componentDyedColor:
-		// A packed 32-bit colour. 0x00a06540 came back as the 10511680 set.
+	case componentDyedColor, componentMapColor:
+		// A packed 32-bit colour. 0x00a06540 came back as the 10511680 set on a
+		// dyed item, and a map tinted 1234567 as 0x0012d687.
 		r.I32()
 		return r.Err()
-	case componentCustomData, componentCustomName, componentItemName:
+	case componentCustomData, componentCustomName, componentItemName,
+		componentIntangibleProjectile, componentMapDecorations,
+		componentBucketEntityData, componentRecipes:
 		// A nameless NBT tag. custom_data is a whole compound, the two names
-		// are text components — all three step with the same walker.
+		// are text components, a knowledge book's recipes are a list of strings
+		// — all step with the same walker.
+		//
+		// intangible_projectile is here rather than beside unbreakable, which
+		// is the surprise: it reads like a marker but is not one. Set to an
+		// empty map it sends `0a 00`, a nameless empty compound, where a true
+		// marker like glider sends nothing at all.
 		return skipNBT(r)
 	case componentGlintOverride:
 		// One bool. Whether the item shimmers, forced either way.
 		r.Bool()
 		return r.Err()
-	case componentPotionDurationScale:
+	case componentPotionDurationScale, componentMinimumAttackCharge:
 		r.F32()
 		return r.Err()
-	case componentNoteBlockSound:
-		// The only plain string among these: a sound event's name, not a
-		// registry id, because a note block can name a sound that has none.
+	case componentNoteBlockSound, componentItemModel, componentTooltipStyle:
+		// Plain strings. A note block's sound is a name rather than a registry
+		// id because it can name a sound that has none, and the other two point
+		// at client-side resources the server never resolves.
 		_ = r.String()
 		return r.Err()
 	case componentOminousAmplifier, componentBaseColor:
@@ -123,8 +173,85 @@ func skipComponent(v *protocol.Version, r *protocol.Reader, kind int32, into *It
 		// defined inline.
 		r.VarInt()
 		return r.Err()
-	case componentInstrument, componentJukeboxPlayable:
+	case componentInstrument, componentJukeboxPlayable, componentDamageType,
+		componentProvidesTrimMaterial, componentBreakSound:
 		return skipHolder(r, componentName(kind))
+	case componentDamageResistant, componentRepairable,
+		componentProvidesBannerPatterns:
+		// A holder set: a count where zero means a tag name follows instead.
+		// `#minecraft:is_fire` arrived as exactly that.
+		readIDSet(r)
+		return r.Err()
+	case componentEntityData, componentBlockEntityData:
+		// A type id and then the rest as NBT. The id is hoisted out of the
+		// compound rather than left in it — a pig spawn egg carrying
+		// {id:"minecraft:pig",NoAI:1b} sends 100 followed by a compound holding
+		// only NoAI. That hoisting is what makes bees decodable too.
+		r.VarInt()
+		return skipNBT(r)
+	default:
+		return skipShapedComponent(v, r, kind)
+	}
+}
+
+// skipShapedComponent steps over the components whose payload is a structure
+// rather than a single value.
+//
+// Split from skipComponent only for length. The line between the two is that
+// everything above reads one thing — a number, a string, a tag, a registry
+// reference — and everything here reads several, or a list of several.
+func skipShapedComponent(v *protocol.Version, r *protocol.Reader, kind int32) error {
+	switch kind {
+	case componentCanPlaceOn, componentCanBreak:
+		return skipBlockPredicates(r)
+	case componentTooltipDisplay:
+		// Whether to hide the tooltip entirely, then the components to leave
+		// out of it — by their own type ids, so `damage` arrives as a 3.
+		r.Bool()
+		return skipVarIntList(r)
+	case componentFood:
+		// Nutrition, saturation, and whether it can always be eaten. Read back
+		// as the 4, 1.2 and true that went in.
+		r.VarInt()
+		r.F32()
+		r.Bool()
+		return r.Err()
+	case componentConsumable:
+		return skipConsumable(r)
+	case componentUseRemainder:
+		// What is left behind, as a nested stack — a bowl after the soup.
+		_, err := skipNestedStack(v, r)
+		return err
+	case componentUseCooldown:
+		// How long, and an optional group so several items can share one timer.
+		r.F32()
+		if r.Bool() {
+			_ = r.String()
+		}
+		return r.Err()
+	case componentTool:
+		return skipTool(r)
+	case componentWeapon:
+		// Damage per attack, and how long a hit disables blocking.
+		r.VarInt()
+		r.F32()
+		return r.Err()
+	case componentAttackRange:
+		// Six floats. Nothing here could be set through /item replace, so all
+		// six came back as defaults — 0, 3, 0, 5, 0.3, 1 — and the reading
+		// rests on the whole packet landing rather than on a value being
+		// recognised. Every one of them parses as a sensible float, and no
+		// other grouping of twenty-four bytes does.
+		r.Skip(6 * 4)
+		return r.Err()
+	case componentEquippable:
+		return skipEquippable(r)
+	case componentDeathProtection, componentGlider:
+		return skipDeathProtection(r, kind)
+	case componentBlocksAttacks:
+		return skipBlocksAttacks(r)
+	case componentBees:
+		return skipBees(r)
 	case componentTrim:
 		return skipTrim(r)
 	case componentContainer:
@@ -220,6 +347,165 @@ func skipPotionContents(r *protocol.Reader, into *ItemStack) error {
 	}
 	if n := r.VarInt(); n != 0 {
 		return fmt.Errorf("potion carries %d effects to apply, which cannot be skipped", n)
+	}
+	return r.Err()
+}
+
+// skipBlockPredicates steps over the blocks an item may be placed on or may
+// break.
+//
+// Each predicate is an optional holder set of blocks, an optional state match,
+// optional nbt, and then the pair of counts that match components — the same
+// pair a villager's trade carries. A pickaxe restricted to dirt and stone sent
+// its two blocks as one holder set and left everything after it absent.
+//
+// The state and component matchers are structures this cannot walk into, but
+// they are absent on anything a command or a plugin sets in the ordinary way.
+func skipBlockPredicates(r *protocol.Reader) error {
+	for range r.VarInt() {
+		if r.Bool() {
+			readIDSet(r)
+		}
+		if r.Bool() {
+			return fmt.Errorf("block predicate matches block state properties, " +
+				"which cannot be skipped")
+		}
+		if r.Bool() {
+			if err := skipNBT(r); err != nil {
+				return err
+			}
+		}
+		if exact, partial := r.VarInt(), r.VarInt(); exact != 0 || partial != 0 {
+			return fmt.Errorf("block predicate matches %d exact and %d partial "+
+				"components, which cannot be skipped", exact, partial)
+		}
+	}
+	return r.Err()
+}
+
+// skipConsumable steps over how an item is eaten or drunk: how long it takes,
+// the animation, the sound, whether it shows particles, and what it does.
+//
+// The effects are a list this cannot walk into. They are empty for anything
+// vanilla — a potion's effects live in potion_contents, not here.
+func skipConsumable(r *protocol.Reader) error {
+	r.F32()    // consume seconds
+	r.VarInt() // animation
+	if err := skipHolder(r, "consume sound"); err != nil {
+		return err
+	}
+	r.Bool() // particles
+	if n := r.VarInt(); n != 0 {
+		return fmt.Errorf("consumable carries %d effects, which cannot be skipped", n)
+	}
+	return r.Err()
+}
+
+// skipDeathProtection steps over what happens when a totem saves its holder.
+//
+// glider shares this only because it has no payload at all: its whole meaning
+// is that it is present. death_protection has a count, which is zero on a
+// vanilla totem, and its effects are a structure this cannot walk into.
+func skipDeathProtection(r *protocol.Reader, kind int32) error {
+	if kind == componentGlider {
+		return nil
+	}
+	if n := r.VarInt(); n != 0 {
+		return fmt.Errorf("death protection carries %d effects, which cannot be skipped", n)
+	}
+	return r.Err()
+}
+
+// skipTool steps over what an item mines: a rule per block set, then the
+// defaults.
+//
+// A rule is the blocks it applies to, an optional speed and an optional
+// "counts as the right tool". Read back as the dirt/5.0/true that went in,
+// with 1.5 and 2 for the defaults after it.
+func skipTool(r *protocol.Reader) error {
+	for range r.VarInt() {
+		readIDSet(r)
+		if r.Bool() {
+			r.F32() // speed
+		}
+		if r.Bool() {
+			r.Bool() // correct for drops
+		}
+	}
+	r.F32()    // default mining speed
+	r.VarInt() // damage per block
+	r.Bool()   // can destroy blocks in creative
+	return r.Err()
+}
+
+// skipEquippable steps over where an item is worn.
+//
+// Two samples: a bare {slot:"head"}, where every optional is absent, and one
+// setting the asset, the camera overlay and the entities allowed to wear it,
+// which is what shows those three are optionals rather than fixed fields.
+func skipEquippable(r *protocol.Reader) error {
+	r.VarInt() // slot — head came back as 4
+	if err := skipHolder(r, "equip sound"); err != nil {
+		return err
+	}
+	if r.Bool() {
+		_ = r.String() // equipment asset
+	}
+	if r.Bool() {
+		_ = r.String() // camera overlay
+	}
+	if r.Bool() {
+		readIDSet(r) // the entities that may wear it
+	}
+	r.Skip(5) // dispensable, swappable, damage on hurt, equip on interact, shearable
+	return skipHolder(r, "shearing sound")
+}
+
+// skipBlocksAttacks steps over a shield's blocking.
+//
+// The delay before it engages, how long a disabling hit lasts, the damage it
+// reduces, how much the item itself takes, and three optional sounds. A shield
+// built with a 0.25 delay and a 1.5 scale came back as exactly those.
+//
+// The reductions are a structure this cannot walk into and are empty on a
+// vanilla shield, whose blocking is described entirely by the numbers here.
+func skipBlocksAttacks(r *protocol.Reader) error {
+	r.F32() // block delay seconds
+	r.F32() // disable cooldown scale
+	if n := r.VarInt(); n != 0 {
+		return fmt.Errorf("blocks_attacks carries %d damage reductions, "+
+			"which cannot be skipped", n)
+	}
+	r.F32() // item damage threshold
+	r.F32() // base
+	r.F32() // factor
+	if r.Bool() {
+		_ = r.String() // the damage type tag that bypasses blocking
+	}
+	for _, what := range []string{"block sound", "disable sound"} {
+		if r.Bool() {
+			if err := skipHolder(r, what); err != nil {
+				return err
+			}
+		}
+	}
+	return r.Err()
+}
+
+// skipBees steps over what a hive holds.
+//
+// Each bee is its entity type, what is left of its data once the type is taken
+// out, and the two tick counts. The leading type is the same hoisting
+// entity_data does, which is what made this readable: without it the 11 in
+// front of an empty compound looks like nothing at all.
+func skipBees(r *protocol.Reader) error {
+	for range r.VarInt() {
+		r.VarInt() // entity type
+		if err := skipNBT(r); err != nil {
+			return err
+		}
+		r.VarInt() // ticks in hive
+		r.VarInt() // minimum ticks in hive
 	}
 	return r.Err()
 }
