@@ -94,8 +94,44 @@ curl -X POST localhost:8181/place -d '{"X":10,"Y":64,"Z":10,"face":1,"verify":tr
 `/drop` `/sneak` `/equip` `/interact` `/consume` `/shoot` `/craft` `/swing`
 `/dig` `/diglook` `/attack` `/place` `/use`
 
+**Containers** — `GET /container`, and `POST /container/`{`open`, `close`,
+`click`, `take`, `put`, `clear`, `button`, `craft`, `grid`, `trade`, `deposit`,
+`withdraw`}
+
+**Workstations** — `POST /smelt` `/rename` `/anvil` `/loom` `/grindstone`
+`/smith` `/enchant` `/brew`
+
 `/dig` takes either one block or a `blocks` array, and reports how many it
 actually broke.
+
+### Containers and workstations
+
+Open a block's UI, act on it, and read back what the server actually did:
+
+```sh
+# Craft banners at a table — six wool and a stick in a 3x3, three times over.
+curl -X POST localhost:8181/container/open -d '{"X":10,"Y":64,"Z":10,"face":1}'
+curl -X POST localhost:8181/container/grid -d '{"layout":{"1":"white_wool",
+  "2":"white_wool","3":"white_wool","4":"white_wool","5":"white_wool",
+  "6":"white_wool","8":"stick"},"repeat":3}'
+
+# Smelt, at a furnace, blast furnace or smoker.
+curl -X POST localhost:8181/smelt -d '{"input":"raw_iron","fuel":"coal","count":8}'
+
+# Trade with a villager until it locks out, and hear how many went through.
+curl -X POST localhost:8181/container/open  -d '{"type":"villager"}'
+curl -X POST localhost:8181/container/trade -d '{"index":0,"times":10}'
+```
+
+Every one reports what *actually* happened rather than what was asked for. A
+full chest keeps the remainder, a villager runs out of stock, a furnace given
+something unsmeltable produces nothing — and the server reports none of that,
+so the client observes the outcome instead of assuming the packet worked.
+
+Storage capacity comes from the window, so a double chest (54 slots), a copper
+or trapped chest, a shulker box, a hopper and a chest minecart all work with no
+special case. Blocks that only look like containers — a fletching table, a
+composter, an empty lectern — open nothing, and say so rather than hanging.
 
 ## Use it as a library
 

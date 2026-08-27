@@ -77,6 +77,11 @@
 //	entities.go    entity tracking, targeting, attacking, interacting
 //	inventory.go   slots, item lookup, container clicks, pickups
 //	craft.go       the player's own 2x2 grid
+//	container.go   block and entity UIs: opening, clicking, trading
+//	windows.go     window types and slot layouts, read off a live server
+//	slots.go       moving items in and out of an open window
+//	workstation.go furnaces, anvils, looms, grindstones, smithing, brewing
+//	storage.go     chests of every kind, barrels, shulkers, hoppers, minecarts
 //
 //	look.go        aiming, by direction / point / block / entity / player
 //	move.go        position packets and walking
