@@ -135,6 +135,7 @@ var componentNames = map[int32]string{
 	107: "cat/collar",
 	108: "sheep/color",
 	109: "shulker/color",
+	110: "sulfur_cube_content",
 }
 
 // componentName renders a component type for an error message.

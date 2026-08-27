@@ -203,7 +203,7 @@ func TestClientBuildersAgree(t *testing.T) {
 // what a 26.1 server sends.
 func identityComponentIDs() map[int32]int32 {
 	ids := make(map[int32]int32, componentLastEntityVariant+1)
-	for kind := int32(0); kind <= componentLastEntityVariant; kind++ {
+	for kind := int32(0); kind <= componentHighest; kind++ {
 		ids[kind] = kind
 	}
 	return ids

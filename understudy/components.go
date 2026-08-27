@@ -28,7 +28,8 @@ import (
 // a reading is right is that the whole packet then decodes and lands on its
 // final byte — a wrong width anywhere leaves the remainder as nonsense.
 //
-// This handles 107 of the 110 types the server registers. The three left are
+// This handles 108 of the 111 types the servers register — 110 on 26.1 and
+// 1.21.11, and one more that 26.2 adds. The three left are
 // creative_slot_lock, additional_trade_cost and map_post_processing, and they
 // are left because they appear not to reach an item at all rather than because
 // they were hard to get to. /item refuses all three, none of the 1506 items in
@@ -132,6 +133,14 @@ const (
 	// axolotl bucket its variant.
 	componentFirstEntityVariant = 81
 	componentLastEntityVariant  = 109
+
+	// New in 26.2, and given the next free canonical id. It holds one item
+	// stack, in the same id-first form every other nested stack uses.
+	componentSulfurCubeContent = 110
+
+	// componentHighest bounds the canonical numbering, for the test that walks
+	// every id and demands each one be decoded or named as an exception.
+	componentHighest = componentSulfurCubeContent
 
 	// Two of the variants carry the same leading flag the four registry
 	// references do, on the versions that use it. Nothing about a chicken or a
@@ -316,6 +325,11 @@ func skipShapedComponent(v *protocol.Version, r *protocol.Reader, kind int32) er
 		return r.Err()
 	case componentConsumable:
 		return skipConsumable(r)
+	case componentSulfurCubeContent:
+		// What a sulfur cube holds. One nested stack: a diamond arrives as its
+		// id, then a count of one, then no components.
+		_, err := skipNestedStack(v, r)
+		return err
 	case componentUseRemainder:
 		// What is left behind, as a nested stack — a bowl after the soup.
 		_, err := skipNestedStack(v, r)

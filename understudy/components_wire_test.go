@@ -295,6 +295,9 @@ func TestComponentPayloadsDecodeWhole(t *testing.T) {
 		{109, "shulker/color",
 			"a plain registry id, not a holder",
 			[]string{"0e"}},
+		{110, "sulfur_cube_content",
+			"a diamond, and a stone — one nested stack, id first",
+			[]string{"01010000", "9e07010000"}},
 	} {
 		t.Run(fmt.Sprintf("%d_%s", tc.kind, tc.name), func(t *testing.T) {
 			for _, s := range tc.samples {
@@ -376,7 +379,7 @@ func TestEveryRegisteredComponentIsAccountedFor(t *testing.T) {
 		41: "additional_trade_cost",
 		48: "map_post_processing",
 	}
-	for kind := int32(0); kind <= componentLastEntityVariant; kind++ {
+	for kind := int32(0); kind <= componentHighest; kind++ {
 		// An empty payload: anything with a known encoding fails trying to read
 		// its first field, and anything without says so by name instead.
 		err := skipComponent(v, protocol.NewReader(nil), kind, nil)
@@ -399,11 +402,11 @@ func TestEveryRegisteredComponentIsAccountedFor(t *testing.T) {
 // The names are the registry's, so a gap in them means the report and the code
 // have drifted apart.
 func TestComponentNamesCoverTheRegistry(t *testing.T) {
-	if got := len(componentNames); got != 110 {
+	if got := len(componentNames); got != 111 {
 		t.Errorf("componentNames has %d entries, want the 110 the 26.1 registry "+
-			"report lists", got)
+			"lists plus the one 26.2 adds", got)
 	}
-	for kind := int32(0); kind <= componentLastEntityVariant; kind++ {
+	for kind := int32(0); kind <= componentHighest; kind++ {
 		if _, ok := componentNames[kind]; !ok {
 			t.Errorf("component %d has no name, so an error about it would be a "+
 				"bare number", kind)

@@ -23,6 +23,10 @@
 //
 //	26.1     full. Every payload shape in understudy/components.go was read off
 //	         a 26.1 server, so it is the version the others are measured against.
+//	26.2     full. Components and the recipe book both decode whole: twenty
+//	         items covering every encoding that differs elsewhere replay with no
+//	         truncated window, and the book reads 1009 recipes. Thirty-two
+//	         component ids moved from 26.1 and no payload shape did.
 //	1.21.11  full. Components and the recipe book both decode whole: 130 items
 //	         replay with no truncated window, and the book reads all 1443
 //	         entries.
@@ -35,6 +39,10 @@
 // # Adding a version
 //
 //  1. node internal/gen/genversion.mjs <minecraft-data> <version> <out.go>
+//     — or, when minecraft-data has not shipped the version yet, first run
+//     internal/gen/reports-to-mcdata.mjs to build its input from the server's
+//     own reports. That is how 26.2 was added: minecraft-data had no 26.2 in
+//     either the npm package or the repository.
 //  2. Run that version's server with --reports, then
 //     node internal/gen/gencomponents.mjs <registries.json> <version> <out_components.go>
 //  3. Measure the component encodings against a running server and fill in
