@@ -480,7 +480,7 @@ func TestComponentsAcceptTheVersionTheyWereBuiltFor(t *testing.T) {
 //
 // Every one of those reads a different number of bytes, so promoting 1.21.11 on
 // the strength of its id table alone would desynchronise windows silently.
-func TestKnowingIDsIsNotEnoughToDecode(t *testing.T) {
+func TestVersionEncodingsAreSeparateFromIDs(t *testing.T) {
 	v, err := protocol.ByProtocol(774) // 1.21.11
 	if err != nil {
 		t.Skipf("1.21.11 is not registered in this build: %v", err)
@@ -489,12 +489,17 @@ func TestKnowingIDsIsNotEnoughToDecode(t *testing.T) {
 		t.Error("1.21.11's component ids were generated from its registries " +
 			"report and should be present")
 	}
-	if v.CanonicalComponents() {
-		t.Fatal("1.21.11 is marked as sharing 26.1's component encodings, but " +
-			"nine of them differ — see this test's comment")
+	enc, ok := v.ComponentEncoding()
+	if !ok {
+		t.Fatal("1.21.11's component encodings have been measured and should be set")
+	}
+	// The three ways it differs. Each was measured, not inferred.
+	if !enc.NestedStacksCountFirst || !enc.TagsAreBareStrings ||
+		!enc.RegistryRefsHaveLeadingFlag {
+		t.Errorf("1.21.11 differs from 26.1 in all three encodings, got %+v", enc)
 	}
 	// The wire id for damage, which 1.21.11 does have.
-	wire, ok := func() (int32, bool) {
+	wire, found := func() (int32, bool) {
 		for w := int32(0); w < 200; w++ {
 			if kind, ok := v.ComponentKind(w); ok && kind == componentDamage {
 				return w, true
@@ -502,15 +507,12 @@ func TestKnowingIDsIsNotEnoughToDecode(t *testing.T) {
 		}
 		return 0, false
 	}()
-	if !ok {
+	if !found {
 		t.Fatal("1.21.11 has no id mapping to damage, so its table is incomplete")
 	}
-	err = skipComponent(v, protocol.NewReader([]byte{37}), wire, nil)
-	if err == nil {
-		t.Fatal("decoded a 1.21.11 component with 26.1's payload shapes")
-	}
-	if !contains(err.Error(), "not encoded the way") {
-		t.Errorf("error %q should say the encodings differ, not that the id is "+
-			"unknown — the id is known", err)
+	// damage is one of the fifty-one that are identical, so with both the ids
+	// and the encodings in place it now reads.
+	if err := skipComponent(v, protocol.NewReader([]byte{37}), wire, nil); err != nil {
+		t.Errorf("1.21.11 refused a damage component: %v", err)
 	}
 }

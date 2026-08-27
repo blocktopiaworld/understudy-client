@@ -14,8 +14,8 @@ func v26_1() *protocol.Version {
 		Protocol:     775,
 		ComponentIDs: v26_1ComponentIDs,
 		// Every payload shape in understudy/components.go was read off a
-		// 26.1.2 server.
-		CanonicalComponents: true,
+		// 26.1.2 server, so 26.1 is the version with no adjustments.
+		Components: &protocol.ComponentEncoding{},
 		Chunk: protocol.ChunkFormat{
 			HasFluidCount: true,
 			HasSizePrefix: false,

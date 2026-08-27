@@ -51,8 +51,8 @@ func testVersion(t *testing.T) *protocol.Version {
 		Packets:  testPackets(t),
 		// The test version stands in for 26.1, so its component ids are the
 		// canonical ones and the mapping is the identity.
-		ComponentIDs:        identityComponentIDs(),
-		CanonicalComponents: true,
+		ComponentIDs: identityComponentIDs(),
+		Components:   &protocol.ComponentEncoding{},
 		EntityNames: []string{
 			0: "minecraft:pig",
 			1: "minecraft:zombie",

@@ -122,6 +122,13 @@ const (
 	// axolotl bucket its variant.
 	componentFirstEntityVariant = 81
 	componentLastEntityVariant  = 109
+
+	// Two of the variants carry the same leading flag the four registry
+	// references do, on the versions that use it. Nothing about a chicken or a
+	// zombie nautilus explains why those two and not the twenty-seven beside
+	// them; it is simply what the bytes do.
+	componentChickenVariant        = 97
+	componentZombieNautilusVariant = 99
 )
 
 // canonicalComponent turns a component's wire id into the id this file
@@ -147,16 +154,12 @@ func canonicalComponent(v *protocol.Version, wire int32) (int32, error) {
 			"so component %d cannot be read: generate that version's registries "+
 			"report and run internal/gen/gencomponents.mjs", v.Name, wire)
 	}
-	// Knowing which id is which is not enough. 1.21.11's ids are known and its
-	// payloads still differ: an item nested in a component is count-first there
-	// and id-first on 26.1, a registry reference is two bytes rather than one,
-	// and a damage type tag is a bare string rather than a prefixed set. Nine
-	// components differ that far, and reading any of them the 26.1 way consumes
-	// the wrong number of bytes.
-	if !v.CanonicalComponents() {
-		return 0, fmt.Errorf("data component payloads on %s are not encoded the "+
-			"way this decoder reads them; component %d cannot be read "+
-			"until that version's shapes are established", v.Name, wire)
+	// Knowing which id is which is not enough — the payloads differ too. See
+	// protocol.ComponentEncoding for what varies and how it was measured.
+	if _, ok := v.ComponentEncoding(); !ok {
+		return 0, fmt.Errorf("data component payloads on %s have not been "+
+			"measured, so component %d cannot be read: put known items on a "+
+			"server of that version and compare the bytes", v.Name, wire)
 	}
 	kind, ok := v.ComponentKind(wire)
 	if !ok {
@@ -245,13 +248,23 @@ func skipComponent(v *protocol.Version, r *protocol.Reader, wire int32, into *It
 		// inline. A leather helmet dyed red came back as 14, light blue as 3.
 		r.VarInt()
 		return r.Err()
-	case componentInstrument, componentJukeboxPlayable, componentDamageType,
-		componentProvidesTrimMaterial, componentBreakSound:
+	case componentBreakSound:
 		return skipHolder(r, componentName(kind))
-	case componentDamageResistant, componentRepairable,
-		componentProvidesBannerPatterns:
+	case componentInstrument, componentJukeboxPlayable, componentDamageType,
+		componentProvidesTrimMaterial:
+		return skipFlaggedHolder(v, r, componentName(kind))
+	case componentRepairable:
 		// A holder set: a count where zero means a tag name follows instead.
-		// `#minecraft:is_fire` arrived as exactly that.
+		readIDSet(r)
+		return r.Err()
+	case componentDamageResistant, componentProvidesBannerPatterns:
+		// These two hold a tag and nothing else, and how that is written moved:
+		// 26.1 wraps it in a holder set, so `#minecraft:is_fire` arrives as a
+		// zero and then the name; 1.21.11 writes the name on its own.
+		if enc, _ := v.ComponentEncoding(); enc.TagsAreBareStrings {
+			_ = r.String()
+			return r.Err()
+		}
 		readIDSet(r)
 		return r.Err()
 	case componentEntityData, componentBlockEntityData:
@@ -373,7 +386,7 @@ func skipShapedComponent(v *protocol.Version, r *protocol.Reader, kind int32) er
 		// width that happened to fit.
 		return skipVarIntPairs(r)
 	default:
-		return skipEntityVariant(r, kind)
+		return skipEntityVariant(v, r, kind)
 	}
 }
 
@@ -578,9 +591,24 @@ func skipBlocksAttacks(r *protocol.Reader) error {
 // "red" arrives as 0. Reading these as holders would work byte for byte and
 // then reject that 0 as an inline definition, on a value a bucket of fish
 // produces routinely.
-func skipEntityVariant(r *protocol.Reader, kind int32) error {
+func skipEntityVariant(v *protocol.Version, r *protocol.Reader, kind int32) error {
 	if kind < componentFirstEntityVariant || kind > componentLastEntityVariant {
 		return fmt.Errorf("data component %s has no known encoding", componentName(kind))
+	}
+	switch kind {
+	case componentChickenVariant, componentZombieNautilusVariant:
+		// The same leading byte the four registry references carry, on the
+		// versions that use it — but what follows is a plain id, not a holder,
+		// so a zero after the flag is a real value. chicken/variant "cold"
+		// arrives as `01 00`, and reading the second byte as a holder would
+		// call that an inline definition and refuse a perfectly ordinary
+		// chicken.
+		if enc, _ := v.ComponentEncoding(); enc.RegistryRefsHaveLeadingFlag {
+			if r.VarInt() == 0 {
+				return fmt.Errorf("%s carries no variant, which has never been "+
+					"seen and cannot be skipped", componentName(kind))
+			}
+		}
 	}
 	r.VarInt()
 	return r.Err()
@@ -787,15 +815,42 @@ func skipHolder(r *protocol.Reader, what string) error {
 	return r.Err()
 }
 
+// skipFlaggedHolder steps over a registry reference that some versions put a
+// byte in front of.
+//
+// Six components do it on 1.21.11 and none on 26.1, which is why this is not
+// folded into skipHolder: break_sound, trim and banner_patterns hold references
+// too and are identical on both. The leading byte is 1 in every sample seen —
+// a goat horn's instrument is `01 05` where 26.1 sends `05` — so it reads like
+// an optional that is always present, and this refuses a zero rather than
+// pretend to know what an absent one looks like.
+func skipFlaggedHolder(v *protocol.Version, r *protocol.Reader, what string) error {
+	if enc, _ := v.ComponentEncoding(); enc.RegistryRefsHaveLeadingFlag {
+		if r.VarInt() == 0 {
+			return fmt.Errorf("%s carries no registry reference, which has never "+
+				"been seen and cannot be skipped", what)
+		}
+	}
+	return skipHolder(r, what)
+}
+
 // skipNestedStack steps over an item stack held inside a component, returning
 // its id.
 //
-// Not the same encoding as an item in a packet: those lead with the count and
-// use a zero to mean empty, while one nested in a component leads with the id
-// and is never empty. The optional-ness, where there is any, sits outside.
+// Which end it leads with is version-specific. On 26.1 it leads with the id and
+// is never empty, and the optional-ness sits outside; on 1.21.11 it leads with
+// the count, exactly like an item in a packet, and a zero count is the empty.
+// Both orders were measured — a bowl left behind by a soup is `fd 06 01 00 00`
+// on one and `01 fc 06 00 00` on the other.
 func skipNestedStack(v *protocol.Version, r *protocol.Reader) (int32, error) {
-	id := r.VarInt()
-	r.VarInt() // count
+	var id int32
+	if enc, _ := v.ComponentEncoding(); enc.NestedStacksCountFirst {
+		r.VarInt() // count
+		id = r.VarInt()
+	} else {
+		id = r.VarInt()
+		r.VarInt() // count
+	}
 	added := r.VarInt()
 	removed := r.VarInt()
 	if err := r.Err(); err != nil {
@@ -819,8 +874,19 @@ func skipNestedStack(v *protocol.Version, r *protocol.Reader) (int32, error) {
 // sends four entries, the two in between being a bare zero. That is why the
 // count is a slot count and not an item count.
 func skipContainerContents(v *protocol.Version, r *protocol.Reader) error {
+	enc, _ := v.ComponentEncoding()
 	for range r.VarInt() {
-		if !r.Bool() {
+		if enc.NestedStacksCountFirst {
+			// The count leads, so a zero is the empty slot and there is no
+			// separate flag to read.
+			if r.Remaining() == nil || len(r.Remaining()) == 0 {
+				return r.Err()
+			}
+			if r.Remaining()[0] == 0 {
+				r.Skip(1)
+				continue
+			}
+		} else if !r.Bool() {
 			continue // an empty slot, one byte
 		}
 		if _, err := skipNestedStack(v, r); err != nil {
