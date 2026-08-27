@@ -230,8 +230,11 @@ internal/entities/   the entity tracker
 internal/inventory/  slots and item stacks
 internal/control/    the HTTP control API
 internal/nbt/        the subset of NBT the client reads
-internal/gen/        the version-table generator
+internal/gen/        the version-table and component-table generators
 cmd/understudy-client/
+acceptance/          the live-server harness the status table comes from
+docs/                style, and a record of past defects and how each was found
+scripts/             one-off maintenance, e.g. changing the module path
 ```
 
 Each `internal/` package is pure and independently testable — that is why they
