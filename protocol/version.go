@@ -77,6 +77,9 @@ type PacketIDs struct {
 	CBPlayMultiBlockChange   int32
 	CBPlayRespawn            int32
 	CBPlayUpdateHealth       int32
+	CBPlayGameStateChange    int32
+	CBPlayEntityEffect       int32
+	CBPlayRemoveEntityEffect int32
 	CBPlayWindowItems        int32
 	CBPlaySetSlot            int32
 	CBPlayOpenWindow         int32
@@ -145,6 +148,7 @@ type Version struct {
 	knowsComponents bool
 
 	entityNames []string
+	effectNames []string
 	itemNames   []string
 	itemStacks  []int32
 	shapes      [][]Box
@@ -196,6 +200,8 @@ type VersionSpec struct {
 	// EntityNames and ItemNames are indexed by wire ID; an empty string means
 	// the ID is unused in this version.
 	EntityNames []string
+	// EffectNames is indexed by effect id.
+	EffectNames []string
 	ItemNames   []string
 	// ItemStacks is indexed by wire ID. A non-positive entry means the default.
 	ItemStacks []int32
@@ -230,6 +236,7 @@ func NewVersion(spec VersionSpec) *Version {
 			return *spec.Components
 		}(),
 		entityNames: spec.EntityNames,
+		effectNames: spec.EffectNames,
 		itemNames:   spec.ItemNames,
 		itemStacks:  spec.ItemStacks,
 		shapes:      spec.Shapes,
@@ -261,6 +268,14 @@ func (v *Version) ItemName(id int32) string {
 		return unknownName(id)
 	}
 	return v.itemNames[id]
+}
+
+// EffectName returns a status effect's namespaced name.
+func (v *Version) EffectName(id int32) string {
+	if id < 0 || int(id) >= len(v.effectNames) || v.effectNames[id] == "" {
+		return unknownName(id)
+	}
+	return v.effectNames[id]
 }
 
 // StackSize returns how many of an item fit in one slot.

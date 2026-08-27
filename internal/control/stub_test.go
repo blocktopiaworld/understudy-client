@@ -17,17 +17,21 @@ import (
 // the defaulting and the response shapes testable at all.
 type stubBot struct {
 	// what the handlers see
-	pos      understudy.Position
-	health   float32
-	food     int32
-	dead     bool
-	deaths   int
-	heldSlot int
-	items    []understudy.ItemStack
-	entities []understudy.Entity
-	support  understudy.Support
-	hit      understudy.RayHit
-	hitOK    bool
+	pos           understudy.Position
+	health        float32
+	food          int32
+	dead          bool
+	onGround      bool
+	gameMode      understudy.GameMode
+	effects       []understudy.Effect
+	notDamageable error
+	deaths        int
+	heldSlot      int
+	items         []understudy.ItemStack
+	entities      []understudy.Entity
+	support       understudy.Support
+	hit           understudy.RayHit
+	hitOK         bool
 	// hitsLanded, when set below the requested count, models a target that
 	// died partway through an attack run.
 	hitsLanded int
@@ -105,6 +109,10 @@ func (b *stubBot) State() protocol.State         { return protocol.StatePlay }
 func (b *stubBot) EntityID() int32               { return 42 }
 func (b *stubBot) Joined() bool                  { return true }
 func (b *stubBot) Dead() bool                    { return b.dead }
+func (b *stubBot) OnGround() bool                { return b.onGround }
+func (b *stubBot) GameMode() understudy.GameMode { return b.gameMode }
+func (b *stubBot) Effects() []understudy.Effect  { return b.effects }
+func (b *stubBot) WhyNotDamageable() error       { return b.notDamageable }
 func (b *stubBot) Deaths() int                   { return b.deaths }
 func (b *stubBot) Health() (float32, int32)      { return b.health, b.food }
 func (b *stubBot) Position() understudy.Position { return b.pos }

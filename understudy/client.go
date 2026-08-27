@@ -135,6 +135,8 @@ type Client struct {
 	inv      *inventory.Inventory
 	window   *inventory.Container
 	trades   []TradeOffer
+	gameMode GameMode
+	effects  *effectSet
 	recipes  map[string]RecipeID
 	// recipesMissing counts entries the server sent that could not be decoded.
 	// Without it a short book is indistinguishable from a small one, and
@@ -215,6 +217,8 @@ func New(opts Options) (*Client, error) {
 		log:      opts.Logger.With("bot", opts.Username),
 		uuid:     protocol.OfflineUUID(opts.Username),
 		entities: entities.New(),
+		effects:  newEffectSet(),
+		gameMode: GameModeUnknown,
 		world:    world.New(),
 		inv:      inventory.New(),
 		window:   inventory.NewContainer(),
@@ -360,8 +364,19 @@ func (c *Client) handleSessionPacket(ctx context.Context, p protocol.Packet) (bo
 		if err := r.Err(); err != nil {
 			return true, err
 		}
+		// The mode is buried behind fields this client has no use for, but it
+		// is the only place the server states it outright — game_state_change
+		// reports changes, so a bot that joins in creative and stays there
+		// would otherwise never hear about it. A failure here is not fatal:
+		// the mode stays unknown and WhyNotDamageable says so.
+		mode := readLoginGameMode(r)
+		if r.Err() != nil {
+			c.log.Debug("could not read the game mode from login", "err", r.Err())
+			mode = GameModeUnknown
+		}
 		c.mu.Lock()
 		c.entityID = entityID
+		c.gameMode = mode
 		c.joined = true
 		c.mu.Unlock()
 		c.log.Info("joined the game", "entity_id", entityID)
@@ -378,6 +393,38 @@ func (c *Client) handleSessionPacket(ctx context.Context, p protocol.Packet) (bo
 		}
 		return true, c.conn.WritePacket(
 			protocol.NewWriter(c.v.Packets.SBPlayKeepAlive).I64(id).Bytes())
+
+	case c.v.Packets.CBPlayGameStateChange:
+		r := p.Reader()
+		reason := r.U8()
+		value := r.F32()
+		if err := r.Err(); err != nil {
+			return true, err
+		}
+		// Reason 3 is the only one that concerns this client: the server
+		// changing the player's game mode, with the mode itself as a float.
+		if reason == gameStateChangeGameMode {
+			c.mu.Lock()
+			c.gameMode = GameMode(value)
+			c.mu.Unlock()
+			c.log.Info("game mode", "mode", GameMode(value))
+		}
+		return true, nil
+
+	case c.v.Packets.CBPlayEntityEffect:
+		return true, c.handleEntityEffect(p)
+
+	case c.v.Packets.CBPlayRemoveEntityEffect:
+		r := p.Reader()
+		entity := r.VarInt()
+		id := r.VarInt()
+		if err := r.Err(); err != nil {
+			return true, err
+		}
+		if c.isSelf(entity) {
+			c.effects.remove(id)
+		}
+		return true, nil
 
 	case c.v.Packets.CBPlayUpdateHealth:
 		r := p.Reader()
@@ -400,6 +447,9 @@ func (c *Client) handleSessionPacket(ctx context.Context, p protocol.Packet) (bo
 		c.mu.Lock()
 		c.dead = false
 		c.mu.Unlock()
+		// Effects do not survive a death, and a stale Resistance here would
+		// make the next scenario's damage look absorbed when it was not.
+		c.effects.clear()
 		// A respawn can cross dimensions, and entity IDs do not survive that.
 		// Keeping stale entries would let the bot attack an ID that now means
 		// something else, or nothing.
@@ -449,6 +499,44 @@ func relativeTo(flags int32, x, y, z float64, at Position) (float64, float64, fl
 		z += at.Z
 	}
 	return x, y, z
+}
+
+// gameStateChangeGameMode is the game_state_change reason that carries a new
+// game mode.
+const gameStateChangeGameMode = 3
+
+// isSelf reports whether an entity id is this player's own.
+func (c *Client) isSelf(id int32) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return id == c.entityID
+}
+
+// handleEntityEffect records a status effect applied to this player.
+//
+// Other entities' effects are dropped: the tracker does not model them, and the
+// question this exists to answer — whether *this* player can be hurt — is only
+// about the player's own.
+func (c *Client) handleEntityEffect(p protocol.Packet) error {
+	r := p.Reader()
+	entity := r.VarInt()
+	id := r.VarInt()
+	amplifier := r.VarInt()
+	duration := r.VarInt()
+	r.U8() // flags: ambient, show particles, show icon
+	if err := r.Err(); err != nil {
+		return err
+	}
+	if !c.isSelf(entity) {
+		return nil
+	}
+	c.effects.set(Effect{
+		ID:        id,
+		Name:      c.v.EffectName(id),
+		Amplifier: amplifier,
+		Duration:  duration,
+	})
+	return nil
 }
 
 func (c *Client) handleTeleport(ctx context.Context, p protocol.Packet) error {

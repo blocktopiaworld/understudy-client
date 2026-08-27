@@ -51,6 +51,8 @@ func newSession(t *testing.T) (*Client, *fakeServer) {
 		log:      discard,
 		uuid:     protocol.OfflineUUID("TestBot"),
 		entities: entities.New(),
+		effects:  newEffectSet(),
+		gameMode: GameModeUnknown,
 		world:    world.New(),
 		inv:      inventory.New(),
 		window:   inventory.NewContainer(),

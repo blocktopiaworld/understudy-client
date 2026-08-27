@@ -96,6 +96,8 @@ func newTestClient(t *testing.T) *Client {
 		log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 		uuid:     protocol.OfflineUUID("TestBot"),
 		entities: entities.New(),
+		effects:  newEffectSet(),
+		gameMode: GameModeUnknown,
 		world:    world.New(),
 		inv:      inventory.New(),
 		window:   inventory.NewContainer(),

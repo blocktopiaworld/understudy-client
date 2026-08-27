@@ -28,6 +28,13 @@ type Bot interface {
 	Joined() bool
 	Dead() bool
 	Deaths() int
+	// OnGround, GameMode, Effects and WhyNotDamageable answer "can this player
+	// be hurt, and is it standing on anything" — the questions a scenario has
+	// to be able to assert before it trusts what damage did.
+	OnGround() bool
+	GameMode() understudy.GameMode
+	Effects() []understudy.Effect
+	WhyNotDamageable() error
 	Health() (health float32, food int32)
 	Position() understudy.Position
 	Version() *protocol.Version

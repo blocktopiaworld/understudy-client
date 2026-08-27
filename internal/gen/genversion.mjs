@@ -26,6 +26,7 @@ const protocol = read('protocol.json')
 const entities = read('entities.json')
 const blocks = read('blocks.json')
 const items = read('items.json')
+const effects = read('effects.json')
 const versionInfo = read('version.json')
 
 // --- packet IDs ------------------------------------------------------------
@@ -100,6 +101,9 @@ const PACKETS = [
   ['CBPlayMultiBlockChange', 'play', 'toClient', 'multi_block_change'],
   ['CBPlayRespawn', 'play', 'toClient', 'respawn'],
   ['CBPlayUpdateHealth', 'play', 'toClient', 'update_health'],
+  ['CBPlayGameStateChange', 'play', 'toClient', 'game_state_change'],
+  ['CBPlayEntityEffect', 'play', 'toClient', 'entity_effect'],
+  ['CBPlayRemoveEntityEffect', 'play', 'toClient', 'remove_entity_effect'],
   ['CBPlayWindowItems', 'play', 'toClient', 'window_items'],
   ['CBPlaySetSlot', 'play', 'toClient', 'set_slot'],
   ['CBPlayOpenWindow', 'play', 'toClient', 'open_window'],
@@ -327,6 +331,7 @@ lines.push(`\t\tPackets: protocol.PacketIDs{`)
 for (const [field, id] of packetFields) lines.push(`\t\t\t${field}: ${id},`)
 lines.push(`\t\t},`)
 lines.push(`\t\tEntityNames: ${goVar}EntityNames,`)
+lines.push(`\t\tEffectNames: ${goVar}EffectNames,`)
 lines.push(`\t\tItemNames:   ${goVar}ItemNames,`)
 lines.push(`\t\tItemStacks:  ${goVar}ItemStacks,`)
 lines.push(`\t\tShapes:      ${goVar}Shapes,`)
@@ -360,6 +365,13 @@ function emitRanges(name, spans) {
   lines.push(``)
 }
 
+// Effect names, for reporting what is on a player. The ids are dense and
+// version-scoped like everything else here.
+const effectNames = []
+for (const e of effects) {
+  effectNames[e.id] = 'minecraft:' + e.name.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase()
+}
+emitStrings(`${goVar}EffectNames`, effectNames)
 emitStrings(`${goVar}EntityNames`, entityNames)
 emitStrings(`${goVar}ItemNames`, itemNames)
 emitInts(`${goVar}ItemStacks`, itemStacks)

@@ -101,6 +101,19 @@ func (s *Server) handleState(w http.ResponseWriter, _ *http.Request) {
 	out["health"] = health
 	out["food"] = food
 	out["held_slot"] = s.bot.HeldSlot()
+	// The state that explains why damage did or did not land, and why a server
+	// might call a bot a flyer. All three were invisible from here, which is
+	// how a working totem of undying was reported as broken: the player was in
+	// creative, and nothing said so.
+	out["on_ground"] = s.bot.OnGround()
+	out["game_mode"] = s.bot.GameMode().String()
+	out["effects"] = s.bot.Effects()
+	if err := s.bot.WhyNotDamageable(); err != nil {
+		out["damageable"] = false
+		out["not_damageable_because"] = err.Error()
+	} else {
+		out["damageable"] = true
+	}
 	s.writeJSON(w, http.StatusOK, out)
 }
 
