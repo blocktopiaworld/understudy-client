@@ -154,3 +154,45 @@ func TestTrackerIsSafeForConcurrentUse(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// A teleport leaves the tracker holding the place the bot just left.
+//
+// The server does send remove_entities for those, but a tick or more later, and
+// until it does they are listed as current. Measured against a real server: a
+// bot teleported 6750 blocks still listed all 117 entities from its previous
+// location, every one further away than any view distance permits, for about
+// half a second. That is long enough for a caller that teleports into an arena
+// and asks for the nearest mob to get one from the last arena — which is
+// exactly the symptom that went unexplained for so long.
+func TestDropBeyondForgetsWhatATeleportLeftBehind(t *testing.T) {
+	tr := New()
+	tr.Spawn(&Entity{ID: 1, TypeName: "minecraft:zombie", X: 0, Y: 64, Z: 0})
+	tr.Spawn(&Entity{ID: 2, TypeName: "minecraft:zombie", X: 30, Y: 64, Z: 0})
+	// Where the bot was before the teleport.
+	tr.Spawn(&Entity{ID: 3, TypeName: "minecraft:zombie", X: 6750, Y: 64, Z: 6750})
+
+	dropped := tr.DropBeyond(0, 64, 0, MaxViewBlocks)
+	if dropped != 1 {
+		t.Errorf("dropped %d, want only the one left behind", dropped)
+	}
+	if got := len(tr.All()); got != 2 {
+		t.Errorf("%d entities left, want the two still in range", got)
+	}
+	for _, e := range tr.All() {
+		if e.ID == 3 {
+			t.Error("kept an entity 9500 blocks away, which no view distance reaches")
+		}
+	}
+}
+
+// The other half: an entity that is merely far must survive, or a bot loses
+// track of things it can still legitimately see.
+func TestDropBeyondKeepsWhatIsStillInView(t *testing.T) {
+	tr := New()
+	for i, dist := range []float64{0, 100, 300, 500} {
+		tr.Spawn(&Entity{ID: int32(i + 1), TypeName: "minecraft:cow", X: dist, Y: 64, Z: 0})
+	}
+	if dropped := tr.DropBeyond(0, 64, 0, MaxViewBlocks); dropped != 0 {
+		t.Errorf("dropped %d entities inside the maximum view distance", dropped)
+	}
+}

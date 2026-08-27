@@ -465,6 +465,19 @@ func (c *Client) handleTeleport(ctx context.Context, p protocol.Packet) error {
 		return err
 	}
 	c.markTeleportEcho()
+	// A teleport does not clear the entity tracker, and the server's
+	// remove_entities for the place just left arrives a tick or more later. In
+	// that window every entity from the old surroundings is still listed, and
+	// listed as current — so a caller that teleports into an arena and asks for
+	// the nearest mob gets one from the previous arena.
+	//
+	// Nothing legitimate sits further away than the largest possible view
+	// distance, so dropping those is safe at any time and not only after a
+	// jump: an entity still in range is untouched, and one out of range was
+	// going to be removed anyway.
+	if dropped := c.entities.DropBeyond(x, y, z, entities.MaxViewBlocks); dropped > 0 {
+		c.log.Debug("dropped entities left behind by a teleport", "count", dropped)
+	}
 	c.log.Info("position synced", "x", x, "y", y, "z", z)
 
 	c.announceLoaded()

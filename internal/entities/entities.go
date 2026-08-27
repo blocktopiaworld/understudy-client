@@ -55,6 +55,41 @@ func (t *Tracker) Remove(ids []int32) {
 	}
 }
 
+// MaxViewBlocks is the furthest an entity can be and still be in view.
+//
+// A server's view distance tops out at 32 chunks, so 512 blocks is beyond any
+// setting. An entry further away than this is not "far", it is stale: the
+// server has stopped addressing it and simply has not said so yet.
+const MaxViewBlocks = 512
+
+// DropBeyond forgets entities further than dist from a point, returning how
+// many went.
+//
+// This exists because a teleport does not clear the tracker. The server sends
+// remove_entities for the old surroundings as their chunks unload, which is
+// correct but not immediate — and in the window before it arrives the tracker
+// holds a whole previous location and reports it as current. Measured: a bot
+// teleported 6750 blocks still listed all 117 entities from where it had been,
+// every one of them further away than any view distance allows, until the
+// server caught up about half a second later.
+//
+// Half a second is a long time for a caller that teleports into an arena and
+// immediately asks for the nearest mob. It gets one from the last arena.
+func (t *Tracker) DropBeyond(x, y, z, dist float64) int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	limit := dist * dist
+	dropped := 0
+	for id, e := range t.entities {
+		dx, dy, dz := e.X-x, e.Y-y, e.Z-z
+		if dx*dx+dy*dy+dz*dz > limit {
+			delete(t.entities, id)
+			dropped++
+		}
+	}
+	return dropped
+}
+
 // MoveRelative applies a positional delta.
 //
 // Updates for an entity that was never seen to spawn are dropped: without a
