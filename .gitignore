@@ -7,6 +7,11 @@
 *.chunk
 *.bin
 
+# The conformance suite: it depends on understudy-core, which is not released
+# yet, so it cannot build for anyone outside this machine. Unignore it when the
+# framework ships.
+/conformance/
+
 # Editor / OS
 .DS_Store
 *.swp

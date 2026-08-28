@@ -282,7 +282,7 @@ Where the floor is beneath the bot, and whether that is known at all.
 | --- | --- | --- |
 | `known` | bool | whether the column below has been sent |
 | `found` | bool | whether a floor was found in it |
-| `ground_y` | float | the surface height |
+| `ground_y` | float | the height of the surface stood on, not the index of the block below it |
 | `y` | float | the bot's own height |
 | `gap` | float | blocks of air between the two |
 | `in_water`, `in_lava`, `submerged` | bool | fluid state |
@@ -305,6 +305,9 @@ curl localhost:8181/ground
   "y": 100
 }
 ```
+
+A floor of blocks at y=99 gives `ground_y: 100`: the number is the top face
+they present, which is also where a bot standing on them is, hence `gap: 0`.
 
 `known: false` is not `found: false`. The first means ask again, the second
 means there is nothing there. **After a teleport, wait on `known` rather than
@@ -429,6 +432,9 @@ beat one two blocks away.
 
 ## `GET /recipes`
 
+What the **player's unlocked** recipe book holds for an item — not the server's
+catalogue.
+
 **Parameters**
 
 | name | type | required | meaning |
@@ -437,10 +443,10 @@ beat one two blocks away.
 
 | field | type | meaning |
 | --- | --- | --- |
-| `found` | bool | whether the book has a recipe for it |
+| `found` | bool | whether the player's book has a recipe for it |
 | `item` | string | what was asked for |
 | `recipe` | int | the recipe id, for `/container/craft` |
-| `known` | int | recipes decoded from the book |
+| `known` | int | recipes decoded from the book so far |
 | `missing` | int | entries that did not decode |
 
 ```sh
@@ -457,5 +463,17 @@ curl 'localhost:8181/recipes?item=stick'
 }
 ```
 
-`missing` is not zero on every version. It reports how much of the book failed
-to decode, so a half-read book cannot be mistaken for a small one.
+A fresh survival player has almost nothing unlocked, so a bot that just joined
+answers `found: false` for sticks — a recipe that obviously exists. That reads
+as a decoding bug and is not one. Unlock the book first if you need all of it:
+
+```
+recipe give <player> *
+```
+
+`known` climbs as recipes unlock, and the 108 above is a partly-unlocked book
+rather than the whole catalogue.
+
+`missing` is separate, and is not zero on every version. It reports how much of
+what *was* sent failed to decode, so a half-read book cannot be mistaken for a
+small one.
