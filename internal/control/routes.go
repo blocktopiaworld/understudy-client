@@ -797,29 +797,44 @@ func (s *Server) containerTrade(ctx context.Context, in struct {
 	if in.Raw {
 		return nil, s.bot.SelectTrade(in.Index)
 	}
+	// Clamp here rather than relying on the callee to do it, so the number
+	// asked for and the number reported come from the same place.
+	times := max(in.Times, 1)
 	// Selecting by what the trade produces survives a villager whose offers are
 	// in a different order, which selecting by index does not.
 	if in.Item != "" {
-		done, err := s.bot.TradeForItem(ctx, in.Item, in.Times)
+		done, err := s.bot.TradeForItem(ctx, in.Item, times)
 		if err != nil {
 			return nil, err
 		}
-		return body{"traded": done, "requested": max(in.Times, 1), "item": in.Item}, nil
+		return body{"traded": done, "requested": times, "item": in.Item}, nil
 	}
-	if in.Times > 1 {
-		done, err := s.bot.TradeAndTake(ctx, in.Index, in.Times)
-		if err != nil {
-			return nil, err
+	// Every count goes through TradeAndTake, including one. Trade alone stops a
+	// step short: it selects the offer and waits for the result to appear, but
+	// the server does not count a trade until the result is *taken*. A caller
+	// that stopped there saw a result stack, reported success, and left the
+	// villager holding it — no traded_with_villager, no trade event, nothing
+	// downstream. Selecting is not trading.
+	var output understudy.ItemStack
+	for _, offer := range s.bot.Trades() {
+		if offer.Index == in.Index {
+			output = offer.Output
+			break
 		}
-		// done < times means the villager ran out; the caller needs the real
-		// number, not the one it asked for.
-		return body{"traded": done, "requested": in.Times}, nil
 	}
-	item, err := s.bot.Trade(ctx, in.Index)
+	// done < times means the villager ran out; done > times means vanilla
+	// batched the take. Either way it is measured from the stock gained, so
+	// report it rather than echoing what was asked for.
+	done, err := s.bot.TradeAndTake(ctx, in.Index, times)
 	if err != nil {
 		return nil, err
 	}
-	return body{"traded": 1, "item": item.Name, "count": item.Count}, nil
+	out := body{"traded": done, "requested": times}
+	if output.Name != "" {
+		out["item"] = output.Name
+		out["count"] = output.Count
+	}
+	return out, nil
 }
 
 // containerGrid lays a recipe out in the open crafting table by slot, and

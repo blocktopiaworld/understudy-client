@@ -7,6 +7,16 @@ Notable changes. Dates are when the work landed, not when a tag was cut.
 First public release candidate. Nothing has been tagged yet, so everything
 below is the starting state rather than a diff from one.
 
+### Fixed
+
+- `POST /container/trade` completed no trade when asked for one. The `times == 1`
+  path selected the offer and stopped, leaving the result in the merchant slot —
+  the server counts a trade only when the result is taken, so no
+  `traded_with_villager`, no trade event, nothing downstream. It also reported
+  `"traded": 1` as a literal, so the response agreed with any assertion put to
+  it. Every count now goes through `TradeAndTake`, and `traded` is measured from
+  the stock gained.
+
 ### Protocol
 
 - Speaks **26.2**, **26.1**, **1.21.11** and **1.21.4**. Support is per-version

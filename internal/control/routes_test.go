@@ -632,3 +632,58 @@ func TestServeStopsOnContextCancel(t *testing.T) {
 		t.Fatal("Serve did not return after the context was cancelled")
 	}
 }
+
+// A single trade must collect its result. Selecting an offer makes the result
+// stack appear, which looks like success and is not: the server counts nothing
+// until the result is taken, so a bot that stops there leaves the villager
+// holding the bread and no trade is recorded anywhere. This route once had a
+// times == 1 shortcut that called Trade and reported a hardcoded "traded": 1 —
+// a literal, not a measurement, so it agreed with any assertion put to it.
+func TestASingleTradeIsTakenAndCounted(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		want       float64
+	}{
+		{"implicit", `{"index":0}`, 1},
+		{"explicit one", `{"index":0,"times":1}`, 1},
+		{"several", `{"index":0,"times":2}`, 2},
+		{"villager runs out", `{"index":0,"times":5}`, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bot := &stubBot{}
+			code, out := call(t, newTestServer(bot), "POST", "/container/trade", tc.body)
+			if code != http.StatusOK {
+				t.Fatalf("status = %d, want 200 (%v)", code, out)
+			}
+			if bot.called("Trade") {
+				t.Error("used Trade, which selects without collecting the result")
+			}
+			if !bot.called("TradeAndTake") {
+				t.Error("did not collect the result")
+			}
+			if out["traded"] != tc.want {
+				t.Errorf("traded = %v, want %v", out["traded"], tc.want)
+			}
+			// The count reported is the one that happened, not the one asked for.
+			if out["item"] != "minecraft:bread" || out["count"] != float64(6) {
+				t.Errorf("item = %v x%v, want minecraft:bread x6", out["item"], out["count"])
+			}
+		})
+	}
+}
+
+// raw is the one path that may stop at selecting, because that is what it is
+// for: a caller that wants to inspect the window itself.
+func TestRawTradeOnlySelects(t *testing.T) {
+	bot := &stubBot{}
+	if code, out := call(t, newTestServer(bot), "POST", "/container/trade",
+		`{"index":0,"raw":true}`); code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (%v)", code, out)
+	}
+	if bot.called("TradeAndTake") {
+		t.Error("raw collected the result; it is meant to select and stop")
+	}
+	if !bot.called("SelectTrade") {
+		t.Error("raw did not select the trade")
+	}
+}

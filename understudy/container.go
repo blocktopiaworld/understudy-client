@@ -468,8 +468,18 @@ func (c *Client) craftOnceInGrid(ctx context.Context, layout map[int]string) (It
 // ahead of time. What can be observed is the result slot, which is the server's
 // own answer — so this selects, waits, and reports what actually landed.
 //
-// Returns the result stack. Call TakeFromContainer(MerchantResultSlot) to
-// collect it; the trade is not counted until the result is taken.
+// This is half of a trade, and most callers want TradeAndTake instead.
+// Selecting an offer makes the result stack appear, which reads as success and
+// is not one: the server counts nothing, grants no traded_with_villager, and
+// emits no trade event until the result is *taken*. A caller that stops here
+// leaves the villager holding the goods.
+//
+// So: it returns the result stack, and collecting it with
+// TakeFromContainer(MerchantResultSlot) is a required second step. Confirm that
+// take by the player's stock going up, not by the result slot changing —
+// vanilla re-offers the same trade immediately and refills the slot with an
+// identical stack, so watching the slot answers "no" on a trade that worked.
+// TradeAndTake does all of that.
 func (c *Client) Trade(ctx context.Context, index int32) (ItemStack, error) {
 	if !c.window.IsOpen() {
 		return ItemStack{}, ErrNoContainer
