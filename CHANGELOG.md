@@ -6,6 +6,15 @@ Notable changes. Dates are when the work landed, not when a tag was cut.
 
 Nothing yet.
 
+## v0.1.0 — 2026-08-29
+
+First tagged release, and the starting state rather than a diff from one.
+Everything below describes what the client is, not what changed.
+
+Speaks Minecraft 26.2, 26.1 and 1.21.11 in full, and decodes 1.21.4 components
+without its recipe book. One binary carries all four and picks by the
+server-list ping.
+
 ### Added
 
 - Twenty endpoints refused until the caller had opened the right window
@@ -25,17 +34,6 @@ Nothing yet.
 - `/drop` says what it dropped and how many. It answered with nothing, which is
   how the stale-inventory bug above stayed invisible.
 - `/place` says what it placed, which face it used and whether it verified.
-
-## v0.1.0 — 2026-08-28
-
-First tagged release, and the starting state rather than a diff from one.
-Everything below describes what the client is, not what changed.
-
-Speaks Minecraft 26.2, 26.1 and 1.21.11 in full, and decodes 1.21.4 components
-without its recipe book. One binary carries all four and picks by the
-server-list ping.
-
-### Changed
 
 - Trading says which kind of nothing it found. An empty offer list meant no
   window, a window that was not a merchant, or a merchant with nothing to sell,
