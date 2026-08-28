@@ -95,6 +95,19 @@ func (c *Client) DigBlock(ctx context.Context, x, y, z, face int32, hold time.Du
 	// take the face from the ray — a guessed face is the wrong one whenever the
 	// block is approached from any other side.
 	hit, s := c.LineOfSightTo(x, y, z)
+	if s == sightNoTarget {
+		// The column is loaded and that position reads as empty. Usually that
+		// means exactly what it says, but not always: a block placed a moment
+		// ago reaches the client one packet later, and a caller that stages a
+		// field and mines it immediately is racing that packet.
+		//
+		// It is a short race, so wait it out rather than refuse. Reported as
+		// BUG-6 against the e2e suite: a whole first batch of a freshly staged
+		// field failed while the second batch, one moment later, mined fine.
+		if c.awaitTargetable(ctx, x, y, z) {
+			hit, s = c.LineOfSightTo(x, y, z)
+		}
+	}
 	if err := s.err("break", x, y, z, hit); err != nil {
 		return err
 	}
@@ -105,6 +118,28 @@ func (c *Client) DigBlock(ctx context.Context, x, y, z, face int32, hold time.Du
 		return err
 	}
 	return c.awaitBreak(ctx, x, y, z, face, hold)
+}
+
+// targetableWait bounds how long DigBlock waits for a block it has been asked
+// to break to actually arrive. Long enough to cover a block update in flight,
+// short enough that digging genuinely empty air still fails promptly.
+const targetableWait = 400 * time.Millisecond
+
+// awaitTargetable waits for a position to hold something breakable, reporting
+// whether it does by the time it gives up.
+func (c *Client) awaitTargetable(ctx context.Context, x, y, z int32) bool {
+	deadline := time.Now().Add(targetableWait)
+	ticker := time.NewTicker(TickRate)
+	defer ticker.Stop()
+	for time.Now().Before(deadline) {
+		if err := sleep(ctx, ticker.C); err != nil {
+			return false
+		}
+		if c.v.IsTargetable(c.world.BlockState(x, y, z)) {
+			return true
+		}
+	}
+	return false
 }
 
 // awaitBreak waits for a block to actually break, sending the explicit finish
