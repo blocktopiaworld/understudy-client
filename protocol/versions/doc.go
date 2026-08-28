@@ -36,6 +36,24 @@
 //	         remaining archaeology. Client.MissingRecipes reports the shortfall
 //	         so a half-decoded book cannot be mistaken for a small one.
 //
+// # Versions and releases
+//
+// The set of Minecraft versions a build speaks is a property of the build, not
+// of the tag: one binary carries them all and picks by the server-list ping.
+// Release tags are therefore ordinary Go semver — they have to be, since the
+// module proxy accepts nothing else — and the Minecraft support matrix lives in
+// the release notes, in the status list above, and in `understudy-client
+// -versions`, which prints what the binary in your hand can actually talk to.
+//
+// Two conventions give that matrix semver weight:
+//
+//   - Adding a Minecraft version is a minor bump. Nothing that worked stops.
+//   - Removing one is a major bump. Someone's server is on it.
+//
+// Carrying all four costs about 1.3 MB of binary and 1 MB of resident memory,
+// measured, which is why there is no per-version build and no build tag to
+// exclude one. Auto-detection is worth more than the megabyte.
+//
 // # Adding a version
 //
 //  1. node internal/gen/genversion.mjs <minecraft-data> <version> <out.go>
