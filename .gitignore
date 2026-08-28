@@ -1,0 +1,13 @@
+# Build output
+/understudy-client
+/coverage.out
+/coverage.html
+
+# Chunk dumps from UNDERSTUDY_DUMP_CHUNK
+*.chunk
+*.bin
+
+# Editor / OS
+.DS_Store
+*.swp
+.idea/

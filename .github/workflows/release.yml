@@ -1,0 +1,61 @@
+# Cuts binaries when a version tag is pushed.
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# Deliberately plain: the project has no dependencies and one binary, so
+# `go build` per platform is the whole job and there is nothing a release tool
+# would do here that a loop does not.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: verify before publishing
+        run: make check
+
+      - name: build every platform
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          mkdir -p dist
+          version="${GITHUB_REF_NAME}"
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
+            os="${target%/*}"; arch="${target#*/}"
+            out="dist/understudy-client_${version}_${os}_${arch}"
+            [ "$os" = windows ] && out="$out.exe"
+            GOOS="$os" GOARCH="$arch" go build \
+              -trimpath -ldflags "-s -w -X main.buildVersion=$version" \
+              -o "$out" ./cmd/understudy-client
+          done
+          (cd dist && sha256sum * > SHA256SUMS)
+          ls -la dist
+
+      # -X against a name that does not exist is silently ignored, so a typo in
+      # the symbol above ships binaries that all call themselves "dev" and
+      # nothing fails. Ask one of them who it is.
+      - name: the stamp landed
+        run: |
+          got=$(./dist/understudy-client_${GITHUB_REF_NAME}_linux_amd64 -versions 2>&1 | head -1)
+          echo "$got"
+          case "$got" in
+            *"$GITHUB_REF_NAME"*) ;;
+            *) echo "::error::build stamp missing: expected $GITHUB_REF_NAME"; exit 1 ;;
+          esac
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*
+          generate_release_notes: true

@@ -1,0 +1,17 @@
+understudy-client
+Copyright 2026 blocktopia.world
+
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+This product includes protocol tables generated from:
+
+  minecraft-data (https://github.com/PrismarineJS/minecraft-data), MIT licensed
+  — packet ids, item, entity and block tables, and collision shapes.
+
+  The Minecraft server's own data-generator output (`--reports`), for data no
+  published dataset carries: data component type ids, slot display ids, and the
+  block, item and entity registries of versions minecraft-data has not shipped.
+  These are registry indices needed to speak the protocol, not game content.
+
+Minecraft is a trademark of Mojang Synergies AB. This project is not affiliated
+with, endorsed by, or connected to Mojang or Microsoft.
