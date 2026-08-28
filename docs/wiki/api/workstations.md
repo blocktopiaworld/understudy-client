@@ -1,77 +1,174 @@
 # Workstations
 
 Each of these needs the matching block open first, via
-[`/container/open`](containers.md#post-containeropen). They take item names,
-place the inputs, press what needs pressing, and take the result.
+[`POST /container/open`](containers.md#post-containeropen). They place the
+inputs, press whatever needs pressing, wait for the result and take it.
 
-All of them return the resulting `item` and `count`, and fail with `409` when
-the station produces nothing — which the server does not otherwise report.
+All return the resulting `item` and `count`, and fail with `409` when the
+station produces nothing — which the server does not otherwise report.
+
+Every response below was captured from a live 26.2 server.
 
 ---
 
 ## `POST /smelt`
 
+Works at a furnace, blast furnace or smoker.
+
+**Parameters**
+
+| name | type | required | default | meaning |
+| --- | --- | --- | --- | --- |
+| `input` | string | yes | | what to smelt |
+| `fuel` | string | yes | | what to burn |
+| `count` | int | no | 1 | how many to smelt |
+
 ```json
-{"input": "raw_iron", "fuel": "coal", "count": 8}
+{
+  "input": "raw_iron",
+  "fuel": "coal",
+  "count": 2
+}
 ```
 
-Works at a furnace, blast furnace or smoker. Waits for the smelt rather than
-assuming it, so `count` is what came out.
+```json
+{
+  "count": 2,
+  "item": "minecraft:iron_ingot",
+  "ok": true,
+  "pitch": 48.2397,
+  "x": 5000.5,
+  "y": 100,
+  "yaw": -90,
+  "z": 5000.5
+}
+```
 
-An unsmeltable input produces nothing and no error on the wire. This reports it.
+It waits for the smelt rather than assuming it, so `count` is what came out. An
+unsmeltable input produces nothing and no error on the wire; this reports it.
 
 ---
 
 ## `POST /anvil`
 
-```json
-{"first": "diamond_sword", "second": "minecraft:sharpness_book"}
-```
-
 Combines two items.
+
+**Parameters**
+
+| name | type | required | meaning |
+| --- | --- | --- | --- |
+| `first` | string | yes | the item being upgraded |
+| `second` | string | yes | what is applied to it |
+
+```sh
+curl -X POST localhost:8181/anvil \
+  -d '{"first":"diamond_sword","second":"minecraft:enchanted_book"}'
+```
 
 ---
 
 ## `POST /rename`
 
+Renames at an anvil.
+
+**Parameters**
+
+| name | type | required | meaning |
+| --- | --- | --- | --- |
+| `item` | string | yes | what to rename |
+| `name` | string | yes | the new name |
+
 ```json
-{"item": "diamond_sword", "name": "Understudy"}
+{
+  "item": "minecraft:diamond_sword",
+  "name": "Understudy"
+}
 ```
 
-Renames at an anvil. Returns `renamed_to` alongside the item.
+```json
+{
+  "count": 1,
+  "item": "minecraft:diamond_sword",
+  "ok": true,
+  "pitch": 48.2397,
+  "renamed_to": "Understudy",
+  "x": 5000.5,
+  "y": 100,
+  "yaw": -90,
+  "z": 5000.5
+}
+```
 
 ---
 
 ## `POST /grindstone`
 
+Strips enchantments.
+
+**Parameters**
+
+| name | type | required | meaning |
+| --- | --- | --- | --- |
+| `item` | string | yes | what to strip |
+
 ```json
-{"item": "diamond_sword"}
+{
+  "item": "minecraft:diamond_sword"
+}
 ```
 
-Strips enchantments.
+```json
+{
+  "count": 1,
+  "item": "minecraft:diamond_sword",
+  "ok": true,
+  "pitch": 48.2397,
+  "x": 5000.5,
+  "y": 100,
+  "yaw": -90,
+  "z": 5000.5
+}
+```
 
 ---
 
 ## `POST /enchant`
 
-```json
-{"item": "diamond_sword", "level": 3}
-```
+Enchants at a table.
 
-Enchants at a table. `level` is which of the three offers to take, not the
-resulting enchantment level.
+**Parameters**
+
+| name | type | required | meaning |
+| --- | --- | --- | --- |
+| `item` | string | yes | what to enchant |
+| `level` | int | yes | which of the three offers to take, 1–3 |
+
+`level` is the offer slot, not the resulting enchantment level.
+
+```sh
+curl -X POST localhost:8181/enchant -d '{"item":"diamond_sword","level":3}'
+```
 
 ---
 
 ## `POST /smith`
 
-```json
-{"template": "netherite_upgrade_smithing_template",
- "base": "diamond_pickaxe",
- "addition": "netherite_ingot"}
-```
-
 Upgrades at a smithing table.
+
+**Parameters**
+
+| name | type | required | meaning |
+| --- | --- | --- | --- |
+| `template` | string | yes | the smithing template |
+| `base` | string | yes | the item being upgraded |
+| `addition` | string | yes | the material |
+
+```sh
+curl -X POST localhost:8181/smith -d '{
+  "template":"netherite_upgrade_smithing_template",
+  "base":"diamond_pickaxe",
+  "addition":"netherite_ingot"}'
+```
 
 Note that the vanilla statistic `interact_with_smithing_table` counts *opening*
 the table, not completing an upgrade. If you are asserting that something was
@@ -81,41 +178,113 @@ smithed, assert on the resulting item.
 
 ## `POST /loom`
 
+Applies a banner pattern.
+
+**Parameters**
+
+| name | type | required | default | meaning |
+| --- | --- | --- | --- | --- |
+| `banner` | string | yes | | the banner |
+| `dye` | string | yes | | the dye |
+| `pattern_item` | string | no | | for patterns that need a pattern item |
+| `index` | int | no | 0 | which of the offered patterns to take |
+
 ```json
-{"banner": "white_banner", "dye": "red_dye",
- "pattern_item": "creeper_banner_pattern", "index": 0}
+{
+  "banner": "minecraft:white_banner",
+  "dye": "minecraft:red_dye",
+  "index": 0
+}
 ```
 
-Applies a banner pattern. `pattern_item` is optional for patterns that need no
-item; `index` picks from the offered list.
+```json
+{
+  "count": 1,
+  "item": "minecraft:white_banner",
+  "ok": true,
+  "pitch": 48.2397,
+  "x": 5000.5,
+  "y": 100,
+  "yaw": -90,
+  "z": 5000.5
+}
+```
 
 ---
 
 ## `POST /brew`
 
+Brews at a stand.
+
+**Parameters**
+
+| name | type | required | default | meaning |
+| --- | --- | --- | --- | --- |
+| `bottle` | string | yes | | the bottles to brew into |
+| `ingredient` | string | yes | | what to brew with |
+| `fuel` | string | yes | | blaze powder |
+| `count` | int | no | 1 | how many bottles |
+
 ```json
-{"bottle": "water_bottle", "ingredient": "nether_wart",
- "fuel": "blaze_powder", "count": 3}
+{
+  "bottle": "minecraft:potion",
+  "ingredient": "minecraft:nether_wart",
+  "fuel": "minecraft:blaze_powder",
+  "count": 1
+}
 ```
 
-Brews at a stand.
+```json
+{
+  "ok": true,
+  "pitch": 48.2397,
+  "x": 5000.5,
+  "y": 100,
+  "yaw": -90,
+  "z": 5000.5
+}
+```
+
+**The bottle must be a water bottle**, which is `minecraft:potion` carrying a
+`potion_contents` component. A bare `minecraft:potion` is an empty potion item
+and brews nothing, which the stand reports as silence and this reports as a
+timeout naming the ingredient.
 
 ---
 
 ## `POST /cartography`
 
-```json
-{"map": "filled_map", "applied": "paper"}
-```
-
 Extends, copies or locks a map.
+
+**Parameters**
+
+| name | type | required | meaning |
+| --- | --- | --- | --- |
+| `map` | string | yes | the map item |
+| `applied` | string | yes | paper, an empty map, or a glass pane |
+
+```sh
+curl -X POST localhost:8181/cartography -d '{"map":"filled_map","applied":"paper"}'
+```
 
 ---
 
 ## `POST /beacon`
 
-```json
-{"payment": "netherite_ingot", "primary": 1, "secondary": 0}
-```
+Sets a beacon's effects.
 
-Sets a beacon's effects. `primary` and `secondary` are effect ids.
+**Parameters**
+
+| name | type | required | meaning |
+| --- | --- | --- | --- |
+| `payment` | string | yes | the ingot or gem to pay with |
+| `primary` | int | yes | the primary effect id |
+| `secondary` | int | no | the secondary effect id |
+
+Effect ids are the registry's own, the same numbers `effects` reports in
+[`GET /state`](reading.md#get-state).
+
+```sh
+curl -X POST localhost:8181/beacon \
+  -d '{"payment":"netherite_ingot","primary":1,"secondary":0}'
+```

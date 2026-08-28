@@ -1,35 +1,113 @@
 # Blocks
 
+Every response below was captured from a live 26.2 server.
+
 ---
 
 ## `POST /dig`
 
-Breaks one block, or a list of them.
+Breaks one block, or a list of them, re-aiming for each.
 
-```sh
-# One block.
-curl -X POST localhost:8181/dig -d '{"X":10,"Y":64,"Z":10,"hold_ms":1500}'
+**Parameters** — give either `X`,`Y`,`Z` or `blocks`.
 
-# Several. The bot re-aims for each.
-curl -X POST localhost:8181/dig -d '{"blocks":[
-  {"X":10,"Y":64,"Z":10},{"X":11,"Y":64,"Z":10}]}'
+| name | type | required | default | meaning |
+| --- | --- | --- | --- | --- |
+| `X`, `Y`, `Z` | int | one form | | a single block |
+| `blocks` | array | one form | | `[{X,Y,Z}, …]` for a batch |
+| `face` | int | no | the face toward the bot | which face to strike, 0–5 |
+| `hold_ms` | int | no | 3000 | how long to hold the swing before giving up |
+
+**Response** — the two forms answer differently, which is worth knowing before
+you write an assertion.
+
+| form | response |
+| --- | --- |
+| single block | the envelope only. `200` means it broke; a failure is a `409` |
+| `blocks` array | the envelope plus `dug`, the number that actually broke |
+
+### One block
+
+```json
+{
+  "X": 5002,
+  "Y": 100,
+  "Z": 5000,
+  "hold_ms": 1500
+}
 ```
 
-| field | meaning |
-| --- | --- |
-| `X`, `Y`, `Z` | the block, for the single form |
-| `blocks` | a list of `{X,Y,Z}`, for the batch form |
-| `face` | which face to strike; defaults to the one facing the bot |
-| `hold_ms` | how long to hold the swing before giving up |
+```json
+{
+  "ok": true,
+  "pitch": 29.248827,
+  "x": 5000.5,
+  "y": 100,
+  "yaw": -90,
+  "z": 5000.5
+}
+```
 
-Returns `dug`, the number that actually broke. On a partial failure the status
-is `409` and `dug` still reports how far it got, so a batch that hits an
-unbreakable block tells you which blocks were fine.
+### A batch
+
+```json
+{
+  "blocks": [
+    {
+      "X": 5003,
+      "Y": 100,
+      "Z": 5000
+    },
+    {
+      "X": 5004,
+      "Y": 100,
+      "Z": 5000
+    }
+  ]
+}
+```
+
+```json
+{
+  "dug": 2,
+  "ok": true,
+  "pitch": 15.642246,
+  "x": 5000.5,
+  "y": 100,
+  "yaw": -90,
+  "z": 5000.5
+}
+```
+
+`dug` counts what broke, not what was asked for. On a partial failure the
+status is `409` and `dug` still reports how far it got, so a batch that meets
+an unbreakable block tells you how many were fine before it stopped.
+
+Note the asymmetry above: the single form carries no `dug`. If you want one
+number regardless of how many blocks you asked for, send a one-element
+`blocks` array.
+
+### When it will not break
+
+```json
+{
+  "X": 5040,
+  "Y": 100,
+  "Z": 5000
+}
+```
+
+`409`
+
+```json
+{
+  "error": "understudy: cannot break block at 5040,100,5000 — 39.50 blocks away, beyond the 4.5 block reach"
+}
+```
 
 **Hold time is a real constraint.** Below the instant-break threshold the
-server ignores the start packet and the swing must be held for the block's full
-hardness. With an efficient enough tool the same block takes a few tens of
-milliseconds. If digs are timing out, check the tool before the timeout.
+server ignores the start packet and the block must be held for its full
+hardness: 0.55 s against 0.058 s on obsidian. If digs are timing out, check the
+tool before the timeout.
 
 A block staged moments earlier may not have reached the client yet. `/dig`
 waits briefly for that rather than refusing, because "there is nothing there"
@@ -40,46 +118,108 @@ real failure.
 
 ## `POST /diglook`
 
+Digs whatever the bot is currently looking at, so aiming and breaking are
+separate steps.
+
+**Parameters**
+
+| name | type | required | default | meaning |
+| --- | --- | --- | --- | --- |
+| `hold_ms` | int | no | 3000 | how long to hold the swing |
+
+| field | type | meaning |
+| --- | --- | --- |
+| `x`, `y`, `z` | int | the block that was under the crosshair |
+| `face` | int | the face struck |
+| `distance` | float | how far away it was |
+
 ```json
-{"hold_ms": 1500}
+{
+  "hold_ms": 1500
+}
 ```
 
-Digs whatever the bot is currently looking at, so aim and break are separate
-steps. Returns the block's `x`, `y`, `z`, the `face` and the `distance`.
+```json
+{
+  "distance": 1.719185864649232,
+  "face": 4,
+  "ok": true,
+  "pitch": 29.248827,
+  "x": 5002,
+  "y": 100,
+  "yaw": -90,
+  "z": 5000
+}
+```
 
 ---
 
 ## `POST /place`
 
-```sh
-curl -X POST localhost:8181/place -d '{"X":10,"Y":64,"Z":10,"face":1,"verify":true}'
+**Parameters**
+
+| name | type | required | default | meaning |
+| --- | --- | --- | --- | --- |
+| `X`, `Y`, `Z` | int | yes | | the block placed **against** |
+| `face` | int | no | the face toward the bot | which face of it, 0–5 |
+| `verify` | bool | no | false | read the position back and confirm it changed |
+
+Face numbering is the protocol's: 0 down, 1 up, 2 north, 3 south, 4 west,
+5 east. So placing on top of the floor block below you is `face: 1`.
+
+```json
+{
+  "X": 5002,
+  "Y": 99,
+  "Z": 5000,
+  "face": 1,
+  "verify": true
+}
 ```
 
-| field | meaning |
-| --- | --- |
-| `X`, `Y`, `Z` | the block being placed *against* |
-| `face` | which face of it, 0-5; `1` is the top |
-| `verify` | read the position back and confirm it changed |
+```json
+{
+  "ok": true,
+  "pitch": 46.66834,
+  "x": 5000.5,
+  "y": 100,
+  "yaw": -90,
+  "z": 5000.5
+}
+```
 
-`verify` is opt-in because it costs a round trip. Use it. Placement fails
-silently more often than anything else here: a block cannot be placed inside an
-entity, and a cow standing where you are building produces a success on the
-wire and no block in the world.
+**Use `verify`.** It costs one round trip — the whole call is 6.4 ms with it —
+and placement fails silently more often than anything else here. A block cannot
+be placed inside an entity, and a cow standing where you are building produces
+a success on the wire and no block in the world.
 
 ---
 
 ## `POST /use`
 
-```json
-{"hold_ms": 0}
-```
-
 Right-clicks with the held item, aiming where the bot is already looking. This
 is eating, drawing a bow, throwing a snowball, using a bucket.
 
-`hold_ms` holds the use down, which is what a bow needs; see `/shoot` for the
-aimed version.
+**Parameters**
 
-Item counts are the reliable signal that a use worked. A thrown snowball going
-from 8 to 7 is unambiguous, and looking for the projectile entity is not — it
-has usually already landed or despawned by the time you ask.
+| name | type | required | default | meaning |
+| --- | --- | --- | --- | --- |
+| `hold_ms` | int | no | 0 | hold the use down, which is what a bow needs |
+
+
+
+```json
+{
+  "ok": true,
+  "pitch": 29.248827,
+  "x": 5000.5,
+  "y": 100,
+  "yaw": -90,
+  "z": 5000.5
+}
+```
+
+The response says the packet went out; it cannot say what the server made of
+it. **Item counts are the reliable signal**: a thrown snowball going from 8 to
+7 is unambiguous. Looking for the projectile entity is not — it has usually
+landed or despawned by the time you ask.

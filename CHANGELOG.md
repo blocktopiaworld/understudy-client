@@ -17,6 +17,12 @@ server-list ping.
 
 ### Fixed
 
+- `WalkTo` spun until the caller's context expired when something was in the
+  way, then reported "context deadline exceeded" — sixty seconds of nothing,
+  blamed on the timeout rather than on the wall. It now gives up after a second
+  of getting no closer and says where it stopped and how far short it was.
+
+
 - `POST /container/trade` completed no trade when asked for one. The `times == 1`
   path selected the offer and stopped, leaving the result in the merchant slot —
   the server counts a trade only when the result is taken, so no

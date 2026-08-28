@@ -80,7 +80,10 @@ curl -X POST localhost:8181/dig  -d '{"X":10,"Y":64,"Z":10,"hold_ms":1500}'
 ```
 
 Reading, movement, digging, placing, combat, containers and workstations are
-all covered. **[Full endpoint reference →](docs/wiki/api/)**
+all covered — 53 endpoints, each documented with its parameters and a request
+and response captured from a live server.
+
+**[Full API reference →](docs/wiki/api/)**  ·  **[Runnable examples →](examples/)**
 
 There is no authentication. Bind it to loopback.
 
@@ -88,7 +91,7 @@ There is no authentication. Bind it to loopback.
 
 ```go
 c, err := understudy.New(understudy.Options{
-	Address:  "127.0.0.1:25565",
+	Addr:     "127.0.0.1:25565",
 	Username: "Probe",
 })
 if err != nil {
@@ -111,6 +114,39 @@ packet the server will ignore: an out-of-reach block, a swing at something
 behind a wall, an attack on a version with no attack packet. Those come back as
 errors that name the distance or the obstruction, because a silent no-op is the
 single most expensive failure mode in a test harness.
+
+## Performance
+
+A bot is cheap enough that the number you can run is a question about your
+server, not about this.
+
+| | |
+| --- | --- |
+| resident memory, idle | 25 MB |
+| resident memory, 470 chunks loaded | 34 MB |
+| CPU, standing still | 0.5% of one core |
+| CPU, mining and walking | ~1% of one core |
+| binary | 8.6 MB, no dependencies |
+
+Chunk storage is the part that could grow badly and does not: 137 more loaded
+chunks cost about 4 MB, so roughly 30 KB each with palette compaction intact.
+
+Control API latency splits in two. Reads answer from the client's own state and
+never touch the network, so they cost what an HTTP round trip on loopback
+costs. Actions that wait for the world cost what the world costs.
+
+| | median | p95 |
+| --- | --- | --- |
+| `GET /state`, `/inventory`, `/block`, `/ground`, `/entities` | 0.35 ms | 0.43 ms |
+| `POST /look`, `/slot`, `/swing` — one packet, no wait | 0.38 ms | 0.45 ms |
+| `POST /place` with `verify:true` | 6.4 ms | 6.7 ms |
+| `POST /dig` one block, efficient tool | 49 ms | 54 ms |
+| `POST /walk` four blocks | 901 ms | 902 ms |
+
+Walking is walking speed and digging is the block's hardness; neither is
+overhead this could remove. Below the instant-break threshold a dig costs the
+full hold instead — 0.55s rather than 0.058s on obsidian — so an unenchanted
+tool is the first thing to check when a mining suite is slow.
 
 ## Caveats
 
@@ -155,6 +191,17 @@ copyright notices, and say if you significantly changed a file.
 
 It does not grant rights to the Blocktopia name or marks (section 6). Build what
 you like on this; just do not brand it as ours.
+
+## Who builds this
+
+understudy-client is built by the team behind **[Blocktopia](https://blocktopia.world)**, a
+platform for Minecraft server communities — achievements, quests, profiles and
+the infrastructure around them. We wrote this because we needed to test our own
+server-side work by actually playing the game, and it turned out to be worth
+publishing on its own.
+
+If you run a Minecraft server, [blocktopia.world](https://blocktopia.world) is
+where that work lives.
 
 ## Credits
 

@@ -2,6 +2,8 @@ package understudy
 
 import (
 	"context"
+	"fmt"
+	"math"
 	"time"
 
 	"github.com/blocktopiaworld/understudy-client/internal/geom"
@@ -84,12 +86,28 @@ func (c *Client) WalkTo(ctx context.Context, x, y, z float64) error {
 	ticker := time.NewTicker(TickRate)
 	defer ticker.Stop()
 
+	best, stalled := math.Inf(1), 0
 	for {
 		pos := c.Position()
 		dx, dy, dz := x-pos.X, y-pos.Y, z-pos.Z
 		dist := geom.Length(dx, dy, dz)
 		if dist <= step {
 			return c.MoveTo(x, y, z)
+		}
+		// Walking into a wall is not an error the server reports: it corrects
+		// the position back and the loop asks again, forever. Left to itself
+		// that burns the caller's whole timeout and then blames the context,
+		// which says nothing about a wall. So notice the lack of progress and
+		// name it.
+		if dist < best-walkProgressEpsilon {
+			best, stalled = dist, 0
+		} else if stalled++; stalled >= walkStallTicks {
+			return fmt.Errorf(
+				"understudy: walking to %.1f,%.1f,%.1f made no progress for %v at "+
+					"%.1f,%.1f,%.1f, %.1f blocks short — something is in the way "+
+					"(this is dead reckoning, not pathfinding)",
+				x, y, z, time.Duration(walkStallTicks)*TickRate,
+				pos.X, pos.Y, pos.Z, dist)
 		}
 		scale := step / dist
 		if err := c.MoveTo(pos.X+dx*scale, pos.Y+dy*scale, pos.Z+dz*scale); err != nil {
@@ -100,6 +118,15 @@ func (c *Client) WalkTo(ctx context.Context, x, y, z float64) error {
 		}
 	}
 }
+
+// walkStallTicks is how long WalkTo tolerates getting no closer before it
+// gives up, and walkProgressEpsilon is what counts as closer. One second is
+// well beyond the jitter of a server correcting a legitimate step, and far
+// below the action timeout it used to consume in full.
+const (
+	walkStallTicks      = 20
+	walkProgressEpsilon = 1e-3
+)
 
 // sleep waits for a tick or for ctx to be cancelled, reporting cancellation as
 // an error so a caller can propagate it with a bare check.

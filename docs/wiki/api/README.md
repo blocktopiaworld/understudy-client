@@ -21,13 +21,26 @@ There is **no authentication**. Bind it to loopback.
 | [Containers](containers.md) | `GET /container` `/trades`, `POST /container/*` |
 | [Workstations](workstations.md) | `/smelt` `/anvil` `/rename` `/loom` `/grindstone` `/smith` `/enchant` `/brew` `/cartography` `/beacon` |
 
+Runnable versions of most of this are in [examples/](../../../examples/).
+
+Every request and response block in these pages was captured from a live
+Minecraft 26.2 server, not written by hand. If a sample looks odd, it is
+because the server really answered that way.
+
 ## The response envelope
 
 Every `POST` that succeeds returns `200` with where the bot ended up, plus
 whatever that verb measured:
 
 ```json
-{"ok": true, "x": 10.5, "y": 64, "z": 10.5, "yaw": 0, "pitch": 0}
+{
+  "ok": true,
+  "pitch": 29.248827,
+  "x": 5000.5,
+  "y": 100,
+  "yaw": -90,
+  "z": 5000.5
+}
 ```
 
 `GET` responses carry only their own fields, without the envelope.

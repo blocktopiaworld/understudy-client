@@ -1,103 +1,210 @@
 # Combat
 
+Every response below was captured from a live 26.2 server.
+
 ---
 
 ## `POST /attack`
 
-```sh
-# The nearest zombie, once.
-curl -X POST localhost:8181/attack -d '{"type":"zombie"}'
+**Parameters** — give `entity_id` or `type`.
 
-# A specific entity, four times.
-curl -X POST localhost:8181/attack -d '{"entity_id":18349,"times":4}'
+| name | type | required | default | meaning |
+| --- | --- | --- | --- | --- |
+| `entity_id` | int | one form | | a specific entity, from [`/entities`](reading.md#get-entities) |
+| `type` | string | one form | | the nearest entity of a type |
+| `times` | int | no | 1 | how many swings |
+
+| field | type | meaning |
+| --- | --- | --- |
+| `hits` | int | swings that landed |
+| `requested` | int | swings asked for |
+| `target_id`, `target_type` | int, string | what was hit |
+
+```json
+{
+  "entity_id": 32632,
+  "times": 2
+}
 ```
 
-| field | meaning |
-| --- | --- |
-| `entity_id` | a specific entity, from `GET /entities` |
-| `type` | the nearest entity of a type, if no id is given |
-| `times` | how many swings; defaults to one |
+```json
+{
+  "hits": 2,
+  "ok": true,
+  "pitch": 17.223436,
+  "target_id": 32632,
+  "x": 5000.5,
+  "y": 100,
+  "yaw": -90,
+  "z": 5000.5
+}
+```
 
-Returns `hits`, `requested`, `target_id` and `target_type`.
+**Prefer `entity_id`.** Targeting by type hits whichever the client thinks is
+nearest, and nearest is three-dimensional — an entity forty blocks straight
+down can beat one two blocks away.
 
-Prefer `entity_id`. Targeting by type hits whichever one the client thinks is
-nearest, and "nearest" is three-dimensional — an entity forty blocks straight
-down can win against one two blocks away.
-
-The attack is refused rather than sent if the target is out of reach or behind
-a wall, and the error names the distance or the obstruction.
+The attack is refused rather than sent when the target is out of reach or
+behind a wall, and the error names the distance or the obstruction. A swing the
+server would silently drop is worse than an error.
 
 ---
 
 ## `POST /swing`
 
-```json
-{"hold_ms": 0}
-```
-
 Swings the arm at nothing in particular. Useful for animations and for the
 statistics that count swings.
+
+**Parameters**
+
+| name | type | required | default | meaning |
+| --- | --- | --- | --- | --- |
+| `hold_ms` | int | no | 0 | hold the swing |
+
+
+
+```json
+{
+  "ok": true,
+  "pitch": 17.223436,
+  "x": 5000.5,
+  "y": 100,
+  "yaw": -90,
+  "z": 5000.5
+}
+```
 
 ---
 
 ## `POST /shoot`
 
-Draws a bow and looses at a target.
+Draws a bow and looses at a target. The launch angle accounts for drop over the
+distance, so this aims rather than points.
 
-```sh
-# At an entity type.
-curl -X POST localhost:8181/shoot -d '{"type":"zombie"}'
+**Parameters** — give one target form.
 
-# At a point.
-curl -X POST localhost:8181/shoot -d '{"x":10.0,"y":64.0,"z":-5.0}'
+| name | type | required | default | meaning |
+| --- | --- | --- | --- | --- |
+| `x`, `y`, `z` | float | one form | | an exact point |
+| `block` | object | one form | | `{x, y, z}`, aimed at the block's centre |
+| `type` | string | one form | | the nearest entity of a type, aimed at body height |
+| `draw_ms` | int | no | full draw | how long to draw |
 
-# At a block.
-curl -X POST localhost:8181/shoot -d '{"block":{"x":10,"y":64,"z":-5}}'
+| field | type | meaning |
+| --- | --- | --- |
+| `draw_ms` | int | the draw actually held |
+| `power` | float | 0–1, the resulting bow power |
+
+```json
+{
+  "block": {
+    "x": 5010,
+    "y": 100,
+    "z": 5000
+  }
+}
 ```
 
-| field | meaning |
-| --- | --- |
-| `x`, `y`, `z` | an exact point |
-| `block` | a block, aimed at its centre |
-| `type` | the nearest entity of a type, aimed at body height |
-| `draw_ms` | how long to draw; defaults to a full draw |
+```json
+{
+  "draw_ms": 1000,
+  "ok": true,
+  "pitch": 3.5,
+  "power": 1,
+  "x": 5000.5,
+  "y": 100,
+  "yaw": -90,
+  "z": 5000.5
+}
+```
 
-Returns the `draw_ms` used and the resulting `power`.
+Against a mob at 4, 8 and 16 blocks it lands three arrows in four, the fourth
+having nothing left to hit.
 
-The arc is computed, not guessed: the launch angle accounts for drop over the
-distance. Against a mob at 4, 8 and 16 blocks it lands three arrows in four,
-the fourth having nothing left to hit.
-
-Two things make bow tests look broken when they are not. The arrow is gone
+**Two things make bow tests look broken when they are not.** The arrow is gone
 before you can look for it, so assert on the target's health rather than on a
 projectile entity existing. And an RCON selector without explicit coordinates
 resolves at **world spawn**, not at the bot, so `@e[type=zombie,distance=..60]`
-will happily report a different zombie entirely.
+will cheerfully report a different zombie entirely.
 
 ---
 
 ## `POST /interact`
 
-```sh
-curl -X POST localhost:8181/interact -d '{"entity_id":18349}'
-curl -X POST localhost:8181/interact -d '{"type":"villager"}'
+Right-clicks an entity: opening a villager's trades, feeding an animal,
+shearing a sheep.
+
+**Parameters** — give `entity_id` or `type`.
+
+| name | type | required | meaning |
+| --- | --- | --- | --- |
+| `entity_id` | int | one form | a specific entity |
+| `type` | string | one form | the nearest entity of a type |
+
+| field | type | meaning |
+| --- | --- | --- |
+| `target_id`, `target_type` | int, string | what was interacted with |
+
+```json
+{
+  "type": "cow"
+}
 ```
 
-Right-clicks an entity: opening a villager's trades, feeding an animal,
-shearing a sheep. Returns `target_id` and `target_type`.
+```json
+{
+  "ok": true,
+  "pitch": 23.672943,
+  "target_id": 32719,
+  "target_type": "minecraft:cow",
+  "x": 5000.5,
+  "y": 100,
+  "yaw": -45,
+  "z": 5000.5
+}
+```
 
-`entity_id` matters more here than anywhere else. Feeding two animals to breed
-them means feeding *each* one, and an animal already in love walks toward its
-partner — so targeting by type feeds the first one twice and the second never.
+`entity_id` matters more here than anywhere else. Breeding two animals means
+feeding *each* one, and an animal already in love walks toward its partner — so
+targeting by type feeds the first one twice and the second never.
 
 ---
 
 ## `POST /interactat`
 
+Right-clicks a specific point on an entity's hitbox.
+
+**Parameters**
+
+| name | type | required | meaning |
+| --- | --- | --- | --- |
+| `entity_id` | int | one form | a specific entity |
+| `type` | string | one form | the nearest entity of a type |
+| `dx`, `dy`, `dz` | float | yes | the hit point, relative to the entity's position |
+
 ```json
-{"entity_id": 18349, "dx": 0.0, "dy": 0.4, "dz": -0.5}
+{
+  "type": "cow",
+  "dx": 0.0,
+  "dy": 0.4,
+  "dz": 0.0
+}
 ```
 
-Right-clicks a specific point on an entity's hitbox. This is how a chest boat
-works: the chest and the seat are separate targets on one entity, and the
-centre boards the boat.
+```json
+{
+  "dx": 0,
+  "dy": 0.4,
+  "dz": 0,
+  "entity_id": 32719,
+  "ok": true,
+  "pitch": 23.672943,
+  "x": 5000.5,
+  "y": 100,
+  "yaw": -45,
+  "z": 5000.5
+}
+```
+
+This is how a chest boat works: the chest and the seat are separate targets on
+one entity, and the centre boards the boat.

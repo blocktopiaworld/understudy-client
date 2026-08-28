@@ -3,6 +3,7 @@ package understudy
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -694,5 +695,54 @@ func TestFallIntoWaterStopsAtTheSurface(t *testing.T) {
 	}
 	if c.OnGround() {
 		t.Error("OnGround() = true after entering water; the server would treat that as an impact")
+	}
+}
+
+// Walking into a wall is not an error the server reports: it corrects the
+// position back and the bot asks again. Before this, the loop ran until the
+// caller's context expired — sixty seconds against a live server — and then
+// blamed the context, which says nothing about a wall. It has to notice that
+// it is getting no closer and say so.
+func TestWalkToGivesUpWhenItStopsMakingProgress(t *testing.T) {
+	c, _ := settled(t)
+	c.opts.DisableIdlePosition = true
+	setPosition(c, 0, 64, 0)
+
+	// A server that pins the bot in place, which is what one does to a client
+	// trying to walk through a block.
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		tick := time.NewTicker(TickRate / 2)
+		defer tick.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-tick.C:
+				setPosition(c, 0, 64, 0)
+			}
+		}
+	}()
+
+	// Well under the deadline: the point is that it returns on its own.
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	err := c.WalkTo(ctx, 100, 64, 0)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("WalkTo through a wall = nil, want an error naming the obstruction")
+	}
+	if ctx.Err() != nil {
+		t.Fatalf("WalkTo ran until the context expired: %v", err)
+	}
+	if want := time.Duration(walkStallTicks) * TickRate; elapsed > want*4 {
+		t.Errorf("WalkTo gave up after %v, want roughly %v", elapsed, want)
+	}
+	if !strings.Contains(err.Error(), "no progress") {
+		t.Errorf("WalkTo error = %q, want it to name the lack of progress", err)
 	}
 }
