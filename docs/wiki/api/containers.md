@@ -507,6 +507,9 @@ The open merchant's offers, decoded.
 
 | field | type | meaning |
 | --- | --- | --- |
+| `open` | bool | whether a window is open at all |
+| `kind` | int | the window-type id |
+| `count` | int | how many offers |
 | `trades` | array | the offers |
 | `index` | int | position in the list, which `/container/trade` takes |
 | `input`, `input_count` | string, int | the first cost |
@@ -539,6 +542,21 @@ The open merchant's offers, decoded.
 
 Spent offers are listed, not filtered away, because a test for lockout needs to
 see them.
+
+**An empty answer used to mean three different things** — no window, a window
+that is not a merchant, or a merchant with nothing to sell — and the caller had
+to poll to find out which. Each now names itself:
+
+| situation | answer |
+| --- | --- |
+| nothing open | `409`, saying to open a merchant first |
+| a merchant with no offers | `200` with `count: 0` |
+| a merchant that never opens | `409` from `/container/open`, naming what a villager with no trades means |
+| an index nobody offers | `409` listing the offers there are |
+
+A villager summoned with a profession but no `Offers` never generates any, so
+that last one will not come true by waiting — which the error says, because
+waiting for it is what callers were doing.
 
 ---
 

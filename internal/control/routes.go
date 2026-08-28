@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -700,6 +701,12 @@ func (s *Server) place(ctx context.Context, in struct {
 	}, nil
 }
 
+// errNoMerchantWindow is the answer to "what is this merchant selling" when
+// there is no merchant.
+var errNoMerchantWindow = errors.New(
+	"understudy: no container is open, so there are no offers to report — open a merchant" +
+		" first; an empty list would not have told you which of the two you had")
+
 // blockFace resolves an optional face field, rejecting anything that is not a
 // real block side.
 //
@@ -1241,7 +1248,18 @@ func (s *Server) interactAt(_ context.Context, in struct {
 
 // handleTrades lists a merchant's offers, including the ones that are spent —
 // a caller testing lockout needs to see them, not have them filtered away.
+// handleTrades reports a merchant's offers, and says which kind of "none" it
+// has when there are none.
+//
+// An empty list used to mean any of three things: no window open, a window that
+// is not a merchant, or a merchant with nothing to sell. They need different
+// fixes, and collapsing them left callers polling in a loop to find out which
+// they had — the caller doing the client's job.
 func (s *Server) handleTrades(w http.ResponseWriter, _ *http.Request) {
+	if !s.bot.ContainerOpen() {
+		s.failed(w, errNoMerchantWindow, body{"open": false, "count": 0, "trades": []body{}})
+		return
+	}
 	offers := s.bot.Trades()
 	out := make([]body, 0, len(offers))
 	for _, t := range offers {
@@ -1257,7 +1275,10 @@ func (s *Server) handleTrades(w http.ResponseWriter, _ *http.Request) {
 		}
 		out = append(out, row)
 	}
-	s.writeJSON(w, http.StatusOK, body{"count": len(out), "trades": out})
+	s.writeJSON(w, http.StatusOK, body{
+		"open": true, "kind": s.bot.ContainerKind(),
+		"count": len(out), "trades": out,
+	})
 }
 
 // handleRecipes reports what the server's recipe book taught us. ?item= looks

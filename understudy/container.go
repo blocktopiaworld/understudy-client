@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -133,7 +134,7 @@ func (c *Client) OpenContainer(ctx context.Context, x, y, z, face int32) error {
 	if err := c.UseOnBlock(ctx, x, y, z, face); err != nil {
 		return err
 	}
-	return c.awaitContainer(ctx, before, func() error {
+	return c.awaitContainer(ctx, before, "that block", func() error {
 		return c.UseOnBlock(ctx, x, y, z, face)
 	})
 }
@@ -145,7 +146,7 @@ func (c *Client) OpenContainerOnEntity(ctx context.Context, entityID int32) erro
 	if err := c.InteractEntity(entityID); err != nil {
 		return err
 	}
-	return c.awaitContainer(ctx, before, func() error {
+	return c.awaitContainer(ctx, before, c.entityTypeName(entityID), func() error {
 		return c.InteractEntity(entityID)
 	})
 }
@@ -158,7 +159,7 @@ func (c *Client) OpenContainerOnNearest(ctx context.Context, typeName string) (E
 	if err != nil {
 		return target, err
 	}
-	return target, c.awaitContainer(ctx, before, func() error {
+	return target, c.awaitContainer(ctx, before, typeName, func() error {
 		_, err := c.InteractNearest(typeName)
 		return err
 	})
@@ -176,7 +177,42 @@ func (c *Client) OpenContainerOnNearest(ctx context.Context, typeName string) (E
 // when the wool is sitting in slot 37, a beat later. Same shape as the
 // teleport race: confirm the state you are about to act on rather than assume
 // the packet that carries it has landed.
-func (c *Client) awaitContainer(ctx context.Context, before int, again func() error) error {
+// entityTypeName names a tracked entity, for an error that would otherwise
+// only have a number in it.
+func (c *Client) entityTypeName(id int32) string {
+	for _, e := range c.Entities() {
+		if e.ID == id {
+			return e.TypeName
+		}
+	}
+	return ""
+}
+
+// merchantAdvice is what a timeout on a villager or a wandering trader almost
+// always means, said plainly.
+//
+// A merchant with no offers has no window at all, so the interaction is
+// answered with silence — the same silence as a block that is not a container.
+// Reporting both as "the target may not have a UI" left callers polling in a
+// loop to find out which they had, which is the caller doing the client's job.
+func merchantAdvice(target string) string {
+	switch {
+	case strings.Contains(target, "villager"):
+		return " — a villager with no trades has no window at all. One summoned with a" +
+			" profession but no Offers never generates any, so this will not become true" +
+			" by waiting."
+	case strings.Contains(target, "wandering_trader"):
+		return " — a wandering trader with no stock has no window at all."
+	case target != "":
+		return " — " + target + " may not have a UI"
+	default:
+		return " — the target may not have a UI"
+	}
+}
+
+func (c *Client) awaitContainer(
+	ctx context.Context, before int, target string, again func() error) error {
+	why := merchantAdvice(target)
 	ticker := time.NewTicker(chunkPollInterval)
 	defer ticker.Stop()
 	deadline := time.After(containerOpenTimeout)
@@ -213,8 +249,8 @@ func (c *Client) awaitContainer(ctx context.Context, before int, again func() er
 				return nil
 			}
 			return fmt.Errorf(
-				"understudy: no container opened within %v — the target may not have a UI",
-				containerOpenTimeout)
+				"understudy: no container opened within %v%s",
+				containerOpenTimeout, why)
 		case <-ticker.C:
 		}
 	}
@@ -516,13 +552,23 @@ func (c *Client) Trade(ctx context.Context, index int32) (ItemStack, error) {
 	if !c.window.IsOpen() {
 		return ItemStack{}, ErrNoContainer
 	}
-	// Check the offer first now that the list is decoded. A spent trade is
-	// accepted and silently does nothing, so without this the only symptom is
-	// a timeout — which is the same symptom as a dozen other things.
-	for _, offer := range c.Trades() {
+	// Check the offer first now that the list is decoded. A spent trade, and an
+	// index nobody offers, are both accepted by the server and silently do
+	// nothing — so without this the only symptom is a timeout, which is the
+	// same symptom as a dozen other things.
+	offers := c.Trades()
+	if len(offers) == 0 {
+		return ItemStack{}, fmt.Errorf(
+			"understudy: this %s has no trades to offer — an unemployed villager, or one "+
+				"given a profession without offers, never generates any",
+			c.ContainerType())
+	}
+	found := false
+	for _, offer := range offers {
 		if offer.Index != index {
 			continue
 		}
+		found = true
 		if !offer.Available() {
 			return ItemStack{}, fmt.Errorf(
 				"understudy: trade %d (%s) is locked out — %d of %d uses spent, so the "+
@@ -530,6 +576,11 @@ func (c *Client) Trade(ctx context.Context, index int32) (ItemStack, error) {
 				index, offer, offer.Uses, offer.MaxUses)
 		}
 		break
+	}
+	if !found {
+		return ItemStack{}, fmt.Errorf(
+			"understudy: no trade at index %d; this merchant offers %d (%v)",
+			index, len(offers), offers)
 	}
 	before, _ := c.window.Slot(MerchantResultSlot)
 	if err := c.SelectTrade(index); err != nil {

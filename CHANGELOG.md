@@ -35,6 +35,16 @@ Speaks Minecraft 26.2, 26.1 and 1.21.11 in full, and decodes 1.21.4 components
 without its recipe book. One binary carries all four and picks by the
 server-list ping.
 
+### Changed
+
+- Trading says which kind of nothing it found. An empty offer list meant no
+  window, a window that was not a merchant, or a merchant with nothing to sell,
+  and the caller had to poll to tell them apart. `GET /trades` now refuses when
+  nothing is open and reports `open` and `kind` when something is; trading at an
+  index nobody offers lists the offers there are, rather than timing out; and a
+  merchant that never opens says that a villager with no trades has no window
+  and will not grow one by waiting.
+
 ### Fixed
 
 - Opening a merchant that had only just spawned failed about two thirds of the

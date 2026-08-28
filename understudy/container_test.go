@@ -3,6 +3,7 @@ package understudy
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -319,7 +320,48 @@ func TestAwaitContainerTimesOutOnANonContainer(t *testing.T) {
 	ctx, stop := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer stop()
 	// Nothing will open a window, so this must give up rather than hang.
-	if err := c.awaitContainer(ctx, c.window.Sequence()); err == nil {
+	if err := c.awaitContainer(ctx, c.window.Sequence(), "that block", nil); err == nil {
 		t.Error("awaitContainer with nothing opening = nil error, want a timeout")
+	}
+}
+
+// An empty answer used to mean three different things, and the caller had to
+// poll to find out which. Each one now names itself.
+func TestTradingSaysWhichKindOfNothingItFound(t *testing.T) {
+	t.Run("no window at all", func(t *testing.T) {
+		c, _ := settled(t)
+		_, err := c.Trade(context.Background(), 0)
+		if !errors.Is(err, ErrNoContainer) {
+			t.Errorf("Trade with no window = %v, want ErrNoContainer", err)
+		}
+	})
+
+	t.Run("a merchant with nothing to sell", func(t *testing.T) {
+		c, _ := settled(t)
+		c.window.Open(1, int32(WindowMerchant), "Villager")
+
+		_, err := c.Trade(context.Background(), 0)
+		if err == nil {
+			t.Fatal("Trade against a merchant with no offers = nil, want an error")
+		}
+		if !strings.Contains(err.Error(), "no trades to offer") {
+			t.Errorf("error = %q, want it to say the merchant has no trades", err)
+		}
+	})
+}
+
+// Timeouts on a merchant say what a merchant timeout means, rather than
+// offering the same shrug a non-container block gets. The caller who had to
+// poll in a loop to find out which they had was doing the client's job.
+func TestATimeoutNamesWhatItWasWaitingOn(t *testing.T) {
+	for _, tc := range []struct{ target, want string }{
+		{"minecraft:villager", "no trades"},
+		{"minecraft:wandering_trader", "no stock"},
+		{"that block", "may not have a UI"},
+		{"", "may not have a UI"},
+	} {
+		if got := merchantAdvice(tc.target); !strings.Contains(got, tc.want) {
+			t.Errorf("merchantAdvice(%q) = %q, want it to mention %q", tc.target, got, tc.want)
+		}
 	}
 }
