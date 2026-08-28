@@ -314,4 +314,24 @@ needs no Minecraft server and no network.
 
 ## Licence
 
-MIT.
+Apache License 2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+Commercial use is explicitly allowed, including in closed-source products: the
+grant covers use, modification, sublicensing and distribution, and there is no
+obligation to publish your changes. What the licence asks in return is that you
+keep the licence text and NOTICE, keep the copyright notices, and say if you
+significantly changed a file.
+
+It does not grant rights to the Blocktopia name or marks (section 6). Build
+what you like on this; just do not brand it as ours.
+
+## Credits
+
+Protocol tables are generated from [minecraft-data][md] (MIT) and from the
+Minecraft server's own `--reports` output — see [NOTICE](NOTICE) for exactly
+which parts come from where.
+
+Minecraft is a trademark of Mojang Synergies AB. This project is not affiliated
+with, endorsed by, or connected to Mojang or Microsoft.
+
+[md]: https://github.com/PrismarineJS/minecraft-data

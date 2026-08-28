@@ -33,6 +33,11 @@ below is the starting state rather than a diff from one.
   not "there is no terrain" — the client claims to be standing rather than
   volunteering that it is airborne, which is what a server kicks for.
 
+### Licence
+
+Apache License 2.0. Commercial use, including in closed-source products, is
+explicitly permitted; the Blocktopia name and marks are not granted.
+
 ### Verified against
 
 Paper 26.2, Fabric 26.2, Fabric 26.1.2, and vanilla 26.2 / 1.21.11 / 1.21.4.
