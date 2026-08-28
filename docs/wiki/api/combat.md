@@ -89,6 +89,7 @@ distance, so this aims rather than points.
 | `block` | object | one form | | `{x, y, z}`, aimed at the block's centre |
 | `type` | string | one form | | the nearest entity of a type, aimed at body height |
 | `draw_ms` | int | no | full draw | how long to draw |
+| `item` | string | no | | the bow to draw; held first when given |
 
 | field | type | meaning |
 | --- | --- | --- |

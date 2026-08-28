@@ -17,14 +17,6 @@ Breaks one block, or a list of them, re-aiming for each.
 | `face` | int | no | the face toward the bot | which face to strike, 0–5 |
 | `hold_ms` | int | no | 3000 | how long to hold the swing before giving up |
 
-**Response** — the two forms answer differently, which is worth knowing before
-you write an assertion.
-
-| form | response |
-| --- | --- |
-| single block | the envelope only. `200` means it broke; a failure is a `409` |
-| `blocks` array | the envelope plus `dug`, the number that actually broke |
-
 ### One block
 
 ```json
@@ -78,13 +70,8 @@ you write an assertion.
 }
 ```
 
-`dug` counts what broke, not what was asked for. On a partial failure the
-status is `409` and `dug` still reports how far it got, so a batch that meets
-an unbreakable block tells you how many were fine before it stopped.
-
-Note the asymmetry above: the single form carries no `dug`. If you want one
-number regardless of how many blocks you asked for, send a one-element
-`blocks` array.
+`dug` counts what broke, not what was asked for, so a batch that meets an
+unbreakable block tells you how many were fine before it stopped.
 
 ### When it will not break
 
@@ -163,6 +150,14 @@ separate steps.
 | `X`, `Y`, `Z` | int | yes | | the block placed **against** |
 | `face` | int | no | the face toward the bot | which face of it, 0–5 |
 | `verify` | bool | no | false | read the position back and confirm it changed |
+| `item` | string | no | | what to place; held first when given |
+
+| field | type | meaning |
+| --- | --- | --- |
+| `placed` | string | what was in hand when it went down |
+| `face` | int | the face used |
+| `verified` | bool | whether the world was read back |
+| `against` | object | the block placed against |
 
 Face numbering is the protocol's: 0 down, 1 up, 2 north, 3 south, 4 west,
 5 east. So placing on top of the floor block below you is `face: 1`.
@@ -205,6 +200,9 @@ is eating, drawing a bow, throwing a snowball, using a bucket.
 | name | type | required | default | meaning |
 | --- | --- | --- | --- | --- |
 | `hold_ms` | int | no | 0 | hold the use down, which is what a bow needs |
+
+`/place` takes an optional `item` and holds it first, the same way `/consume`
+always has.
 
 
 

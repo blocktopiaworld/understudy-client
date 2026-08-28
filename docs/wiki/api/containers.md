@@ -7,6 +7,27 @@ with nothing special-cased. `type` exists only to report what was opened.
 
 Every response below was captured from a live 26.2 server.
 
+## Opening what you need
+
+Every `POST /container/*` verb needs a window open. Give it the position and
+it opens the block itself:
+
+| field | type | meaning |
+| --- | --- | --- |
+| `X`, `Y`, `Z` | int | the block to work at; all three or none |
+| `face` | int | which face to click, 0–5; defaults to the one facing the bot |
+| `at` | string | a merchant to open instead: the nearest entity of a type |
+| `at_entity_id` | int | a merchant by exact id |
+
+With no position, the verb uses whatever window is already open, which is how
+it has always behaved. The window is left open afterwards, so a caller that
+opens once and acts several times still works.
+
+It cannot find the block for you. The version tables carry item names and block
+*classification*, not block names, so "the nearest furnace" is not a question
+this client can answer.
+
+
 ---
 
 ## `POST /container/open`

@@ -142,6 +142,12 @@ Drops the held item.
 
 An empty body drops one.
 
+| field | type | meaning |
+| --- | --- | --- |
+| `item` | string | what was in hand |
+| `dropped` | int | how many went |
+| `all` | bool | which form was used |
+
 ```json
 {
   "ok": true,

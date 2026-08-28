@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/blocktopiaworld/understudy-client/protocol"
@@ -73,6 +74,16 @@ func newStubBot() *stubBot {
 }
 
 func (b *stubBot) record(name string) { b.calls = append(b.calls, name) }
+
+// calledPrefix matches a call that records its argument, e.g. "HoldItem:stone".
+func (b *stubBot) calledPrefix(name string) bool {
+	for _, c := range b.calls {
+		if c == name || strings.HasPrefix(c, name+":") {
+			return true
+		}
+	}
+	return false
+}
 
 func (b *stubBot) called(name string) bool {
 	for _, c := range b.calls {
@@ -348,6 +359,15 @@ func (b *stubBot) OpenContainer(ctx context.Context, x, y, z, face int32) error 
 		return b.err
 	}
 	b.windowOpen, b.windowID, b.windowKind, b.windowTitle = true, 7, 3, "Crafting"
+	return nil
+}
+
+func (b *stubBot) OpenContainerOnEntity(ctx context.Context, entityID int32) error {
+	b.record("OpenContainerOnEntity")
+	if b.err != nil {
+		return b.err
+	}
+	b.windowOpen, b.windowID, b.windowKind, b.windowTitle = true, 9, 20, "Villager"
 	return nil
 }
 

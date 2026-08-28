@@ -1,8 +1,7 @@
 # Workstations
 
-Each of these needs the matching block open first, via
-[`POST /container/open`](containers.md#post-containeropen). They place the
-inputs, press whatever needs pressing, wait for the result and take it.
+These place the inputs, press whatever needs pressing, wait for the result and
+take it.
 
 Most return the resulting `item` and `count`, and all fail with `409` when the
 station produces nothing — which the server does not otherwise report.
@@ -12,6 +11,25 @@ A `200` means the action completed, and there is no item to report because
 brewing changes bottles in place and a beacon has no output.
 
 Every response below was captured from a live 26.2 server.
+
+## Opening what you need
+
+Every endpoint on this page needs the right block open. Give it the position
+and it opens the block itself:
+
+| field | type | meaning |
+| --- | --- | --- |
+| `X`, `Y`, `Z` | int | the block to work at; all three or none |
+| `face` | int | which face to click, 0–5; defaults to the one facing the bot |
+
+With no position, the verb uses whatever window is already open, which is how
+it has always behaved. The window is left open afterwards, so a caller that
+opens once and acts several times still works.
+
+It cannot find the block for you. The version tables carry item names and block
+*classification*, not block names, so "the nearest furnace" is not a question
+this client can answer.
+
 
 ---
 
@@ -29,6 +47,7 @@ Works at a furnace, blast furnace or smoker.
 
 ```json
 {
+  "X": 7001, "Y": 100, "Z": 7000,
   "input": "raw_iron",
   "fuel": "coal",
   "count": 2

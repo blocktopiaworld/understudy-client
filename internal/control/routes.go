@@ -417,7 +417,22 @@ func (s *Server) hold(_ context.Context, in struct {
 func (s *Server) drop(ctx context.Context, in struct {
 	All bool `json:"all"`
 }) (body, error) {
-	return nil, s.bot.DropHeld(ctx, in.All)
+	// Read the hand before, because after the drop it may be empty. This
+	// answered nothing at all until a conformance test found that the client's
+	// own count did not move after a drop — a silence that hid the bug for as
+	// long as nobody asked the server.
+	before, _ := s.bot.HeldItem()
+	if err := s.bot.DropHeld(ctx, in.All); err != nil {
+		return nil, err
+	}
+	dropped := int32(1)
+	if in.All {
+		dropped = before.Count
+	}
+	if before.Empty() {
+		dropped = 0
+	}
+	return body{"item": before.Name, "dropped": dropped, "all": in.All}, nil
 }
 
 // sneak holds sneak for a duration, since sneak_time only accrues while
@@ -498,7 +513,17 @@ func (s *Server) shoot(ctx context.Context, in struct {
 	Block   *blockRef `json:"block"`
 	Type    string    `json:"type"`
 	DrawMS  int       `json:"draw_ms"`
+	// The bow to draw. Optional, and held first when given.
+	Item string `json:"item"`
 }) (body, error) {
+	if in.Item != "" {
+		if _, err := s.bot.HoldItem(in.Item); err != nil {
+			return nil, err
+		}
+		if err := settle(ctx); err != nil {
+			return nil, err
+		}
+	}
 	draw := millis(in.DrawMS, understudy.BowFullDraw)
 	out := body{"draw_ms": draw.Milliseconds(), "power": understudy.BowPower(draw)}
 
@@ -612,7 +637,14 @@ func (s *Server) dig(ctx context.Context, in struct {
 	hold := millis(in.HoldMS, defaultDigHold)
 
 	if len(in.Blocks) == 0 {
-		return nil, s.bot.DigBlock(ctx, in.X, in.Y, in.Z, face, hold)
+		// Reported the same way as a batch of one, so a caller reading "dug"
+		// does not have to know which form it sent. It used to answer with the
+		// envelope alone here and a count for the array form, which meant a
+		// test that wanted one number had to send a one-element array.
+		if err := s.bot.DigBlock(ctx, in.X, in.Y, in.Z, face, hold); err != nil {
+			return body{"dug": 0}, err
+		}
+		return body{"dug": 1}, nil
 	}
 	coords := make([][3]int32, 0, len(in.Blocks))
 	for _, b := range in.Blocks {
@@ -635,15 +667,37 @@ func (s *Server) place(ctx context.Context, in struct {
 	// opening UIs and using items, where nothing is expected to appear and
 	// verifying would turn every such call into a two-second failure.
 	Verify bool `json:"verify"`
+	// What to place. Optional, and when given it is held first — /consume has
+	// always taken its item this way, and there was no reason for placing to
+	// be the one verb that made the caller arrange its own hand.
+	Item string `json:"item"`
 }) (body, error) {
 	face, err := blockFace(in.Face)
 	if err != nil {
 		return nil, err
 	}
-	if in.Verify {
-		return nil, s.bot.PlaceBlockVerified(ctx, in.X, in.Y, in.Z, face)
+	if in.Item != "" {
+		if _, err := s.bot.HoldItem(in.Item); err != nil {
+			return nil, err
+		}
+		// The slot change has to reach the server before the placement, or the
+		// wrong thing gets placed.
+		if err := settle(ctx); err != nil {
+			return nil, err
+		}
 	}
-	return nil, s.bot.PlaceBlock(ctx, in.X, in.Y, in.Z, face)
+	if in.Verify {
+		if err := s.bot.PlaceBlockVerified(ctx, in.X, in.Y, in.Z, face); err != nil {
+			return nil, err
+		}
+	} else if err := s.bot.PlaceBlock(ctx, in.X, in.Y, in.Z, face); err != nil {
+		return nil, err
+	}
+	held, _ := s.bot.HeldItem()
+	return body{
+		"placed": held.Name, "face": face, "verified": in.Verify,
+		"against": body{"x": in.X, "y": in.Y, "z": in.Z},
+	}, nil
 }
 
 // blockFace resolves an optional face field, rejecting anything that is not a
@@ -709,6 +763,67 @@ func (s *Server) handleContainer(w http.ResponseWriter, _ *http.Request) {
 // containerOpen right-clicks a block, or the nearest entity of a type, and
 // waits for its UI. A block that is not a container never opens one, so this
 // reports a timeout rather than hanging.
+// station is the block or entity a verb should work at, for callers who would
+// otherwise have to open it themselves.
+//
+// Twenty of these endpoints refuse until the right window is open, and the
+// client already knows which window each one needs — it just would not go and
+// get one. So every one of them now accepts the position of the block to use,
+// opens it, and does the job: three calls become one, and nothing that already
+// worked changes, because with no position given the behaviour is exactly what
+// it was.
+//
+// It cannot find the block for you. The version tables carry item names and
+// block *classification*, not block names, so "the nearest furnace" is not a
+// question this client can answer. Naming the position is the caller's part.
+type station struct {
+	// A block. Pointers because zero is a real coordinate and "not given" has
+	// to be distinguishable from "at the origin".
+	X, Y, Z *int32
+	Face    *int32 `json:"face"`
+
+	// An entity instead, for merchants: a type to take the nearest of, or an
+	// exact id.
+	At       string `json:"at"`
+	EntityID int32  `json:"at_entity_id"`
+}
+
+// asked reports whether the caller named something to open.
+//
+// Any one coordinate counts, so that half a position reaches the check below
+// and is told what is missing. Treating it as "nothing given" would silently
+// run the verb against whatever window happened to be open, which is the wrong
+// answer arrived at quietly.
+func (w station) asked() bool {
+	return w.X != nil || w.Y != nil || w.Z != nil || w.At != "" || w.EntityID != 0
+}
+
+// open opens what the caller named, and does nothing when they named nothing.
+//
+// The window is left open afterwards. A verb that closed it would break the
+// callers who open once and act several times, and closing is one more call
+// for the callers who do not care.
+func (s *Server) open(ctx context.Context, w station) error {
+	if !w.asked() {
+		return nil
+	}
+	if w.EntityID != 0 {
+		return s.bot.OpenContainerOnEntity(ctx, w.EntityID)
+	}
+	if w.At != "" {
+		_, err := s.bot.OpenContainerOnNearest(ctx, w.At)
+		return err
+	}
+	if w.X == nil || w.Y == nil || w.Z == nil {
+		return invalidf("give all three of X, Y and Z, or none of them")
+	}
+	face, err := blockFace(w.Face)
+	if err != nil {
+		return err
+	}
+	return s.bot.OpenContainer(ctx, *w.X, *w.Y, *w.Z, face)
+}
+
 func (s *Server) containerOpen(ctx context.Context, in struct {
 	X, Y, Z int32
 	Face    *int32 `json:"face"`
@@ -742,27 +857,39 @@ func (s *Server) containerClose(_ context.Context, _ struct{}) (body, error) {
 	return nil, s.bot.CloseContainer()
 }
 
-func (s *Server) containerClick(_ context.Context, in struct {
+func (s *Server) containerClick(ctx context.Context, in struct {
+	station
 	Slot   int   `json:"slot"`
 	Button int8  `json:"button"`
 	Mode   int32 `json:"mode"`
 }) (body, error) {
+	if err := s.open(ctx, in.station); err != nil {
+		return nil, err
+	}
 	return nil, s.bot.ClickContainerSlot(in.Slot, in.Button, in.Mode)
 }
 
 // containerTake shift-clicks a slot, which is what empties a crafting result
 // including every repeat the ingredients allowed.
-func (s *Server) containerTake(_ context.Context, in struct {
+func (s *Server) containerTake(ctx context.Context, in struct {
+	station
 	Slot int `json:"slot"`
 }) (body, error) {
+	if err := s.open(ctx, in.station); err != nil {
+		return nil, err
+	}
 	return nil, s.bot.TakeFromContainer(in.Slot)
 }
 
 // containerButton presses a numbered button — how a stonecutter or loom picks
 // a recipe.
-func (s *Server) containerButton(_ context.Context, in struct {
+func (s *Server) containerButton(ctx context.Context, in struct {
+	station
 	Button int32 `json:"button"`
 }) (body, error) {
+	if err := s.open(ctx, in.station); err != nil {
+		return nil, err
+	}
 	return nil, s.bot.ClickContainerButton(in.Button)
 }
 
@@ -770,10 +897,14 @@ func (s *Server) containerButton(_ context.Context, in struct {
 // rather than the caller placing ingredients slot by slot. all:true repeats
 // until the ingredients run out.
 func (s *Server) containerCraft(ctx context.Context, in struct {
+	station
 	Recipe int32  `json:"recipe"`
 	Item   string `json:"item"`
 	All    bool   `json:"all"`
 }) (body, error) {
+	if err := s.open(ctx, in.station); err != nil {
+		return nil, err
+	}
 	// By name is the useful form: the recipe ids are the server's own and
 	// change between versions, so nothing outside this session can know them.
 	if in.Item != "" {
@@ -787,6 +918,7 @@ func (s *Server) containerCraft(ctx context.Context, in struct {
 }
 
 func (s *Server) containerTrade(ctx context.Context, in struct {
+	station
 	Index int32  `json:"index"`
 	Item  string `json:"item"`
 	Times int    `json:"times"`
@@ -794,6 +926,9 @@ func (s *Server) containerTrade(ctx context.Context, in struct {
 	// and inspect the window itself.
 	Raw bool `json:"raw"`
 }) (body, error) {
+	if err := s.open(ctx, in.station); err != nil {
+		return nil, err
+	}
 	if in.Raw {
 		return nil, s.bot.SelectTrade(in.Index)
 	}
@@ -841,9 +976,13 @@ func (s *Server) containerTrade(ctx context.Context, in struct {
 // takes the result. Preferred over /container/craft for hand-written tests:
 // a layout is readable, a numeric recipe id is not.
 func (s *Server) containerGrid(ctx context.Context, in struct {
+	station
 	Layout map[string]string `json:"layout"`
 	Repeat int               `json:"repeat"`
 }) (body, error) {
+	if err := s.open(ctx, in.station); err != nil {
+		return nil, err
+	}
 	layout, err := slotLayout(in.Layout)
 	if err != nil {
 		return nil, err
@@ -876,10 +1015,14 @@ func slotLayout(in map[string]string) (map[int]string, error) {
 // --- slot moves and storage -------------------------------------------------
 
 func (s *Server) containerPut(ctx context.Context, in struct {
+	station
 	Item string `json:"item"`
 	Slot int    `json:"slot"`
 	One  bool   `json:"one"`
 }) (body, error) {
+	if err := s.open(ctx, in.station); err != nil {
+		return nil, err
+	}
 	move := s.bot.PutIntoSlot
 	if in.One {
 		move = s.bot.PutOneIntoSlot
@@ -891,17 +1034,26 @@ func (s *Server) containerPut(ctx context.Context, in struct {
 	return body{"slot": in.Slot, "item": item.Name, "count": item.Count}, nil
 }
 
-func (s *Server) containerClear(ctx context.Context, _ struct{}) (body, error) {
+func (s *Server) containerClear(ctx context.Context, in struct {
+	station
+}) (body, error) {
+	if err := s.open(ctx, in.station); err != nil {
+		return nil, err
+	}
 	return nil, s.bot.ClearContainerInputs(ctx)
 }
 
 // containerDeposit reports what actually moved, not what was asked for: a full
 // container accepts the click and silently keeps the remainder.
 func (s *Server) containerDeposit(ctx context.Context, in struct {
+	station
 	Item  string `json:"item"`
 	Count int32  `json:"count"`
 	All   bool   `json:"all"`
 }) (body, error) {
+	if err := s.open(ctx, in.station); err != nil {
+		return nil, err
+	}
 	if in.All {
 		stacks, err := s.bot.DepositAll(ctx)
 		if err != nil {
@@ -917,9 +1069,13 @@ func (s *Server) containerDeposit(ctx context.Context, in struct {
 }
 
 func (s *Server) containerWithdraw(ctx context.Context, in struct {
+	station
 	Item  string `json:"item"`
 	Count int32  `json:"count"`
 }) (body, error) {
+	if err := s.open(ctx, in.station); err != nil {
+		return nil, err
+	}
 	moved, err := s.bot.Withdraw(ctx, in.Item, in.Count)
 	if err != nil {
 		return nil, err
@@ -930,10 +1086,14 @@ func (s *Server) containerWithdraw(ctx context.Context, in struct {
 // --- workstations -----------------------------------------------------------
 
 func (s *Server) smelt(ctx context.Context, in struct {
+	station
 	Input string `json:"input"`
 	Fuel  string `json:"fuel"`
 	Count int    `json:"count"`
 }) (body, error) {
+	if err := s.open(ctx, in.station); err != nil {
+		return nil, err
+	}
 	if in.Fuel == "" {
 		in.Fuel = "minecraft:coal"
 	}
@@ -945,9 +1105,13 @@ func (s *Server) smelt(ctx context.Context, in struct {
 }
 
 func (s *Server) rename(ctx context.Context, in struct {
+	station
 	Item string `json:"item"`
 	Name string `json:"name"`
 }) (body, error) {
+	if err := s.open(ctx, in.station); err != nil {
+		return nil, err
+	}
 	item, err := s.bot.RenameItem(ctx, in.Item, in.Name)
 	if err != nil {
 		return nil, err
@@ -956,9 +1120,13 @@ func (s *Server) rename(ctx context.Context, in struct {
 }
 
 func (s *Server) anvilCombine(ctx context.Context, in struct {
+	station
 	First  string `json:"first"`
 	Second string `json:"second"`
 }) (body, error) {
+	if err := s.open(ctx, in.station); err != nil {
+		return nil, err
+	}
 	item, err := s.bot.CombineInAnvil(ctx, in.First, in.Second)
 	if err != nil {
 		return nil, err
@@ -967,11 +1135,15 @@ func (s *Server) anvilCombine(ctx context.Context, in struct {
 }
 
 func (s *Server) loom(ctx context.Context, in struct {
+	station
 	Banner  string `json:"banner"`
 	Dye     string `json:"dye"`
 	Pattern string `json:"pattern_item"`
 	Index   int32  `json:"index"`
 }) (body, error) {
+	if err := s.open(ctx, in.station); err != nil {
+		return nil, err
+	}
 	item, err := s.bot.ApplyBannerPattern(ctx, in.Banner, in.Dye, in.Pattern, in.Index)
 	if err != nil {
 		return nil, err
@@ -980,8 +1152,12 @@ func (s *Server) loom(ctx context.Context, in struct {
 }
 
 func (s *Server) grindstone(ctx context.Context, in struct {
+	station
 	Item string `json:"item"`
 }) (body, error) {
+	if err := s.open(ctx, in.station); err != nil {
+		return nil, err
+	}
 	item, err := s.bot.Disenchant(ctx, in.Item)
 	if err != nil {
 		return nil, err
@@ -990,10 +1166,14 @@ func (s *Server) grindstone(ctx context.Context, in struct {
 }
 
 func (s *Server) smith(ctx context.Context, in struct {
+	station
 	Template string `json:"template"`
 	Base     string `json:"base"`
 	Addition string `json:"addition"`
 }) (body, error) {
+	if err := s.open(ctx, in.station); err != nil {
+		return nil, err
+	}
 	item, err := s.bot.UpgradeInSmithingTable(ctx, in.Template, in.Base, in.Addition)
 	if err != nil {
 		return nil, err
@@ -1002,9 +1182,13 @@ func (s *Server) smith(ctx context.Context, in struct {
 }
 
 func (s *Server) enchant(ctx context.Context, in struct {
+	station
 	Item  string `json:"item"`
 	Level int32  `json:"level"`
 }) (body, error) {
+	if err := s.open(ctx, in.station); err != nil {
+		return nil, err
+	}
 	item, err := s.bot.Enchant(ctx, in.Item, in.Level)
 	if err != nil {
 		return nil, err
@@ -1013,11 +1197,15 @@ func (s *Server) enchant(ctx context.Context, in struct {
 }
 
 func (s *Server) brew(ctx context.Context, in struct {
+	station
 	Bottle     string `json:"bottle"`
 	Ingredient string `json:"ingredient"`
 	Fuel       string `json:"fuel"`
 	Count      int    `json:"count"`
 }) (body, error) {
+	if err := s.open(ctx, in.station); err != nil {
+		return nil, err
+	}
 	if in.Bottle == "" {
 		in.Bottle = "minecraft:potion"
 	}
@@ -1093,17 +1281,25 @@ func (s *Server) handleRecipes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) beacon(ctx context.Context, in struct {
+	station
 	Payment   string `json:"payment"`
 	Primary   int32  `json:"primary"`
 	Secondary int32  `json:"secondary"`
 }) (body, error) {
+	if err := s.open(ctx, in.station); err != nil {
+		return nil, err
+	}
 	return nil, s.bot.ActivateBeacon(ctx, in.Payment, in.Primary, in.Secondary)
 }
 
 func (s *Server) cartography(ctx context.Context, in struct {
+	station
 	Map     string `json:"map"`
 	Applied string `json:"applied"`
 }) (body, error) {
+	if err := s.open(ctx, in.station); err != nil {
+		return nil, err
+	}
 	item, err := s.bot.ApplyToMap(ctx, in.Map, in.Applied)
 	if err != nil {
 		return nil, err

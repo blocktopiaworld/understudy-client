@@ -106,6 +106,7 @@ type Bot interface {
 	// containers: crafting tables, smithing tables, stonecutters, villagers
 	OpenContainer(ctx context.Context, x, y, z, face int32) error
 	OpenContainerOnNearest(ctx context.Context, typeName string) (understudy.Entity, error)
+	OpenContainerOnEntity(ctx context.Context, entityID int32) error
 	CloseContainer() error
 	ContainerOpen() bool
 	ContainerID() int32

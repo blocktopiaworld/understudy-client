@@ -6,6 +6,26 @@ Notable changes. Dates are when the work landed, not when a tag was cut.
 
 Nothing yet.
 
+### Added
+
+- Twenty endpoints refused until the caller had opened the right window
+  themselves, while the client already knew which window each one needed. Every
+  workstation and every `POST /container/*` verb now takes the block to work at
+  and opens it, turning three calls into one. Additive: with no position given
+  the behaviour is exactly what it was, and the window is left open afterwards.
+  Trading also takes `at` or `at_entity_id` for a merchant, which is an entity
+  rather than a block.
+- `/place` and `/shoot` take an optional `item` and hold it first, the way
+  `/consume` always has.
+
+### Changed
+
+- A single-block `/dig` now reports `dug` like the batch form, so a caller
+  reading that number does not have to know which form it sent.
+- `/drop` says what it dropped and how many. It answered with nothing, which is
+  how the stale-inventory bug above stayed invisible.
+- `/place` says what it placed, which face it used and whether it verified.
+
 ## v0.1.0 — 2026-08-28
 
 First tagged release, and the starting state rather than a diff from one.

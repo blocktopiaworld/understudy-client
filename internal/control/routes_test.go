@@ -687,3 +687,122 @@ func TestRawTradeOnlySelects(t *testing.T) {
 		t.Error("raw did not select the trade")
 	}
 }
+
+// Twenty endpoints used to refuse until the caller had opened the right window
+// themselves, while the client already knew which window each one needed. They
+// now take the block to work at. Nothing that already worked changes: with no
+// position given, the behaviour is what it was.
+func TestVerbsOpenTheStationTheyAreGiven(t *testing.T) {
+	for _, tc := range []struct{ name, path, body string }{
+		{"smelt", "/smelt", `{"X":1,"Y":2,"Z":3,"input":"raw_iron","fuel":"coal"}`},
+		{"anvil", "/anvil", `{"X":1,"Y":2,"Z":3,"first":"a","second":"b"}`},
+		{"rename", "/rename", `{"X":1,"Y":2,"Z":3,"item":"a","name":"b"}`},
+		{"grindstone", "/grindstone", `{"X":1,"Y":2,"Z":3,"item":"a"}`},
+		{"loom", "/loom", `{"X":1,"Y":2,"Z":3,"banner":"a","dye":"b"}`},
+		{"brew", "/brew", `{"X":1,"Y":2,"Z":3,"bottle":"a","ingredient":"b","fuel":"c"}`},
+		{"deposit", "/container/deposit", `{"X":1,"Y":2,"Z":3,"item":"a","all":true}`},
+		{"withdraw", "/container/withdraw", `{"X":1,"Y":2,"Z":3,"item":"a","count":1}`},
+		{"put", "/container/put", `{"X":1,"Y":2,"Z":3,"item":"a","slot":0}`},
+		{"take", "/container/take", `{"X":1,"Y":2,"Z":3,"slot":0}`},
+		{"grid", "/container/grid", `{"X":1,"Y":2,"Z":3,"layout":{"1":"a"}}`},
+		{"trade", "/container/trade", `{"X":1,"Y":2,"Z":3,"index":0}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bot := &stubBot{}
+			if code, out := call(t, newTestServer(bot), "POST", tc.path, tc.body); code != http.StatusOK {
+				t.Fatalf("status = %d (%v)", code, out)
+			}
+			if !bot.called("OpenContainer") {
+				t.Errorf("%s did not open the block it was given; calls were %v", tc.path, bot.calls)
+			}
+		})
+	}
+}
+
+// A merchant is an entity, not a block, so trading names one the same way.
+func TestTradeOpensTheMerchantItIsGiven(t *testing.T) {
+	bot := &stubBot{}
+	if code, out := call(t, newTestServer(bot), "POST", "/container/trade",
+		`{"at":"villager","index":0}`); code != http.StatusOK {
+		t.Fatalf("status = %d (%v)", code, out)
+	}
+	if !bot.called("OpenContainerOnNearest:villager") {
+		t.Errorf("did not open the merchant; calls were %v", bot.calls)
+	}
+}
+
+// Naming nothing has to behave exactly as before, or this is not additive.
+func TestVerbsWithoutAStationDoNotOpenAnything(t *testing.T) {
+	bot := &stubBot{}
+	if code, out := call(t, newTestServer(bot), "POST", "/container/deposit",
+		`{"item":"a","all":true}`); code != http.StatusOK {
+		t.Fatalf("status = %d (%v)", code, out)
+	}
+	if bot.called("OpenContainer") {
+		t.Error("opened a window nobody asked for")
+	}
+}
+
+// Half a position is a mistake worth naming, not a shrug.
+func TestAPartialStationIsRejected(t *testing.T) {
+	bot := &stubBot{}
+	code, out := call(t, newTestServer(bot), "POST", "/container/deposit",
+		`{"X":1,"Y":2,"item":"a","all":true}`)
+	if code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (%v)", code, out)
+	}
+}
+
+// /consume has always taken its item and held it. Placing and shooting made the
+// caller arrange their own hand, for no reason anyone could name.
+func TestPlaceAndShootHoldTheItemTheyAreGiven(t *testing.T) {
+	for _, tc := range []struct{ name, path, body string }{
+		{"place", "/place", `{"X":1,"Y":2,"Z":3,"item":"minecraft:stone"}`},
+		{"shoot", "/shoot", `{"type":"zombie","item":"minecraft:bow"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bot := &stubBot{}
+			if code, out := call(t, newTestServer(bot), "POST", tc.path, tc.body); code != http.StatusOK {
+				t.Fatalf("status = %d (%v)", code, out)
+			}
+			if !bot.calledPrefix("HoldItem") {
+				t.Errorf("%s did not hold the item; calls were %v", tc.path, bot.calls)
+			}
+		})
+	}
+}
+
+// A single dig answered with the envelope alone while a batch answered with a
+// count, so a caller wanting one number had to send a one-element array.
+func TestDigReportsACountForOneBlockAndForMany(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		want       float64
+	}{
+		{"one", `{"X":1,"Y":2,"Z":3}`, 1},
+		{"several", `{"blocks":[{"X":1,"Y":2,"Z":3},{"X":1,"Y":2,"Z":4}]}`, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			code, out := call(t, newTestServer(&stubBot{}), "POST", "/dig", tc.body)
+			if code != http.StatusOK {
+				t.Fatalf("status = %d (%v)", code, out)
+			}
+			if out["dug"] != tc.want {
+				t.Errorf("dug = %v, want %v", out["dug"], tc.want)
+			}
+		})
+	}
+}
+
+// Dropping answered with nothing at all, which is how the client's inventory
+// going stale after a drop stayed invisible until a test asked the server.
+func TestDropReportsWhatWent(t *testing.T) {
+	bot := &stubBot{}
+	code, out := call(t, newTestServer(bot), "POST", "/drop", `{"all":true}`)
+	if code != http.StatusOK {
+		t.Fatalf("status = %d (%v)", code, out)
+	}
+	if out["item"] == nil || out["dropped"] == nil {
+		t.Errorf("drop said nothing about what it dropped: %v", out)
+	}
+}
