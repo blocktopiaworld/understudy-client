@@ -101,8 +101,12 @@ this client can answer.
 ```
 
 A window existing is not a window being populated: the open packet and the
-contents packet are separate, and acting the instant a window appears reads an
-empty container. Reading `GET /container` back is the wait.
+contents packet are separate, so this waits for both before it returns.
+
+An entity that has only just spawned is not ready to trade for a second or so,
+and answers the first interact with silence. Opening repeats the interaction
+while it waits rather than concluding there is no UI, so a merchant summoned a
+moment ago opens rather than failing two times in three.
 
 Blocks that only look like containers — a fletching table, a composter, an
 empty lectern — open nothing at all. A timeout on those is correct, not a bug.

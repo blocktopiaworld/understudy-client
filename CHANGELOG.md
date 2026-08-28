@@ -37,6 +37,15 @@ server-list ping.
 
 ### Fixed
 
+- Opening a merchant that had only just spawned failed about two thirds of the
+  time. An entity is not ready to trade for a second or so after spawning, and
+  a single interact sent inside that window is answered with silence, which
+  surfaced as "the target may not have a UI" — a confident and wrong diagnosis
+  of "not yet". Opening now repeats the interaction while it waits, and the
+  timeout is five seconds rather than three. Six freshly summoned wandering
+  traders opened two times in six before, and six in six after.
+
+
 - Walking off a ledge left the bot standing in mid-air until the server kicked
   it for flying. `WalkTo` is dead reckoning at a constant height and gravity was
   never part of it, while auto-fall only covers a *teleport* into mid-air. Two

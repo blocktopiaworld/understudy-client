@@ -72,7 +72,15 @@ func (c *Client) requireConn() error {
 // containerOpenTimeout bounds the wait for a window after using a block. The
 // server opens it within a tick or two; anything longer means the block was
 // not a container, or the interaction never landed.
-const containerOpenTimeout = 3 * time.Second
+const containerOpenTimeout = 5 * time.Second
+
+// containerOpenRetry is how often the interaction is repeated while waiting.
+//
+// Three seconds was not enough for an entity that had only just spawned, and
+// the extra time alone would not have helped: the server answers a single
+// early interact with silence, so the ask has to be made again rather than
+// waited on longer.
+const containerOpenRetry = 1200 * time.Millisecond
 
 // tradeResultTimeout bounds the wait for a trade's output. The server answers
 // within a tick or two; anything longer means it did not accept the trade.
@@ -125,7 +133,9 @@ func (c *Client) OpenContainer(ctx context.Context, x, y, z, face int32) error {
 	if err := c.UseOnBlock(ctx, x, y, z, face); err != nil {
 		return err
 	}
-	return c.awaitContainer(ctx, before)
+	return c.awaitContainer(ctx, before, func() error {
+		return c.UseOnBlock(ctx, x, y, z, face)
+	})
 }
 
 // OpenContainerOnEntity right-clicks an entity and waits for its UI — a
@@ -135,7 +145,9 @@ func (c *Client) OpenContainerOnEntity(ctx context.Context, entityID int32) erro
 	if err := c.InteractEntity(entityID); err != nil {
 		return err
 	}
-	return c.awaitContainer(ctx, before)
+	return c.awaitContainer(ctx, before, func() error {
+		return c.InteractEntity(entityID)
+	})
 }
 
 // OpenContainerOnNearest right-clicks the closest entity of a type and waits
@@ -146,7 +158,10 @@ func (c *Client) OpenContainerOnNearest(ctx context.Context, typeName string) (E
 	if err != nil {
 		return target, err
 	}
-	return target, c.awaitContainer(ctx, before)
+	return target, c.awaitContainer(ctx, before, func() error {
+		_, err := c.InteractNearest(typeName)
+		return err
+	})
 }
 
 // awaitContainer waits for a window newer than the one seen before the
@@ -161,10 +176,12 @@ func (c *Client) OpenContainerOnNearest(ctx context.Context, typeName string) (E
 // when the wool is sitting in slot 37, a beat later. Same shape as the
 // teleport race: confirm the state you are about to act on rather than assume
 // the packet that carries it has landed.
-func (c *Client) awaitContainer(ctx context.Context, before int) error {
+func (c *Client) awaitContainer(ctx context.Context, before int, again func() error) error {
 	ticker := time.NewTicker(chunkPollInterval)
 	defer ticker.Stop()
 	deadline := time.After(containerOpenTimeout)
+	retry := time.NewTicker(containerOpenRetry)
+	defer retry.Stop()
 	for {
 		if c.window.Sequence() > before && c.window.IsOpen() && c.window.Size() > 0 {
 			return nil
@@ -172,6 +189,21 @@ func (c *Client) awaitContainer(ctx context.Context, before int) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case <-retry.C:
+			// Ask again. An entity that has only just spawned is not ready to
+			// trade for a second or so, and a single interact sent inside that
+			// window is answered with nothing at all — which arrives here as
+			// "the target may not have a UI", a confident and wrong diagnosis
+			// of "not yet". A freshly summoned wandering trader failed to open
+			// four times in six on the first ask and every time on the second.
+			//
+			// Same shape as waiting for a block to become targetable before
+			// refusing to dig it: not ready is not the same as never.
+			if again != nil {
+				if err := again(); err != nil {
+					return err
+				}
+			}
 		case <-deadline:
 			if c.window.Sequence() > before && c.window.IsOpen() {
 				// The window opened but never sent its contents. Usable for a
