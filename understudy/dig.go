@@ -33,6 +33,17 @@ const blockChangeTimeout = 2 * time.Second
 // is what a real client looks like.
 const swingInterval = 2 * TickRate
 
+// breakCooldown is the pause a vanilla client takes after finishing a break it
+// had to hold for, before it will start the next one.
+//
+// The vanilla client sets destroyDelay = 5 ticks when a break completes over
+// time, and gates the next start on it. An *instant* break never sets it, which
+// is why a player with an efficient tool can clear a block a tick and a player
+// with a bare hand cannot. Reproducing that keeps a bot's mining cadence inside
+// what a player could produce, which is the whole point of being a real client
+// rather than a command runner.
+const breakCooldown = 5 * TickRate
+
 // Swing plays the arm animation. Purely cosmetic on its own — it does not
 // hit anything. Attack and Dig are the packets that do work.
 func (c *Client) Swing() error {
@@ -117,6 +128,9 @@ func (c *Client) DigBlock(ctx context.Context, x, y, z, face int32, hold time.Du
 	if err := c.StartDig(ctx, x, y, z, face); err != nil {
 		return err
 	}
+	if err := c.waitForBreakCooldown(ctx); err != nil {
+		return err
+	}
 	return c.awaitBreak(ctx, x, y, z, face, hold)
 }
 
@@ -152,6 +166,21 @@ func (c *Client) awaitTargetable(ctx context.Context, x, y, z int32) bool {
 //
 // Watching the world model handles both: return the instant it breaks,
 // otherwise escalate to the finish packet and keep watching.
+// waitForBreakCooldown pauses if the previous break was one the client had to
+// hold for. Instant breaks record nothing, so a run of them is not slowed.
+func (c *Client) waitForBreakCooldown(ctx context.Context) error {
+	c.mu.RLock()
+	last := c.lastHeldBreak
+	c.mu.RUnlock()
+	if last.IsZero() {
+		return nil
+	}
+	if since := time.Since(last); since < breakCooldown {
+		return wait(ctx, breakCooldown-since)
+	}
+	return nil
+}
+
 func (c *Client) awaitBreak(ctx context.Context, x, y, z, face int32, hold time.Duration) error {
 	// Without terrain there is nothing to observe, so fall back to the old
 	// fixed sequence rather than spin.
@@ -171,7 +200,14 @@ func (c *Client) awaitBreak(ctx context.Context, x, y, z, face int32, hold time.
 
 	for {
 		if !c.IsTargetableAt(x, y, z) {
-			return nil // gone — no finish packet was ever required
+			if finished {
+				// It needed the finish packet, so a vanilla client would now
+				// wait out its destroy delay before starting the next block.
+				c.mu.Lock()
+				c.lastHeldBreak = time.Now()
+				c.mu.Unlock()
+			}
+			return nil
 		}
 		now := time.Now()
 		if now.Sub(lastSwing) >= swingInterval {

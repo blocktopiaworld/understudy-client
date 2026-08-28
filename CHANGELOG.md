@@ -4,7 +4,15 @@ Notable changes. Dates are when the work landed, not when a tag was cut.
 
 ## Unreleased
 
-Nothing yet.
+### Fixed
+
+- Mining ignored the pause a vanilla client takes between blocks. A break that
+  completes over time sets `destroyDelay = 5` ticks and gates the next start;
+  an instant break never sets it, which is why an efficient tool clears a block
+  a tick and a bare hand cannot. The client now reproduces both, so a bot's
+  mining cadence stays inside what a player could produce. Measured on Paper
+  26.2: an instant-break run is unchanged at 43 ms a block, and a held break
+  now carries the extra 250 ms.
 
 ## v0.1.0 — 2026-08-29
 

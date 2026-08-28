@@ -154,18 +154,22 @@ type Client struct {
 	uuid protocol.UUID
 
 	// mu guards the mutable player state below.
-	mu       sync.RWMutex
-	state    protocol.State
-	entityID int32
-	pos      Position
-	joined   bool
-	health   float32
-	food     int32
-	dead     bool
-	deaths   int
-	onGround bool
-	heldSlot int
-	input    uint8
+	mu sync.RWMutex
+	// lastHeldBreak is when a break that needed the finish packet completed,
+	// which gates the next one. Zero means the last break was instant, or
+	// there has not been one.
+	lastHeldBreak time.Time
+	state         protocol.State
+	entityID      int32
+	pos           Position
+	joined        bool
+	health        float32
+	food          int32
+	dead          bool
+	deaths        int
+	onGround      bool
+	heldSlot      int
+	input         uint8
 	// corrections counts server-issued position corrections. See the increment
 	// site: it is one of the client's ground-detection signals.
 	corrections int

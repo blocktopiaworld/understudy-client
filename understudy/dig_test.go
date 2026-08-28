@@ -46,3 +46,51 @@ func TestDigGivesUpOnGenuinelyEmptyAir(t *testing.T) {
 		t.Errorf("waited %v for empty air, well past the %v bound", waited, targetableWait)
 	}
 }
+
+// A vanilla client sets destroyDelay = 5 ticks when a break completes over
+// time, and gates the next start on it. An instant break never sets it — which
+// is why an efficient tool clears a block a tick and a bare hand cannot. A bot
+// that ignored the difference would mine at a cadence no player could produce.
+func TestAHeldBreakPausesBeforeTheNextButAnInstantOneDoesNot(t *testing.T) {
+	t.Run("after an instant break there is no pause", func(t *testing.T) {
+		c, _ := settled(t)
+		began := time.Now()
+		if err := c.waitForBreakCooldown(context.Background()); err != nil {
+			t.Fatalf("waitForBreakCooldown: %v", err)
+		}
+		if waited := time.Since(began); waited > 10*time.Millisecond {
+			t.Errorf("waited %v after an instant break, want none", waited)
+		}
+	})
+
+	t.Run("after a held break it waits out the rest of the delay", func(t *testing.T) {
+		c, _ := settled(t)
+		c.mu.Lock()
+		c.lastHeldBreak = time.Now()
+		c.mu.Unlock()
+
+		began := time.Now()
+		if err := c.waitForBreakCooldown(context.Background()); err != nil {
+			t.Fatalf("waitForBreakCooldown: %v", err)
+		}
+		waited := time.Since(began)
+		if waited < breakCooldown-10*time.Millisecond {
+			t.Errorf("waited %v, want about %v", waited, breakCooldown)
+		}
+	})
+
+	t.Run("a delay already elapsed costs nothing", func(t *testing.T) {
+		c, _ := settled(t)
+		c.mu.Lock()
+		c.lastHeldBreak = time.Now().Add(-2 * breakCooldown)
+		c.mu.Unlock()
+
+		began := time.Now()
+		if err := c.waitForBreakCooldown(context.Background()); err != nil {
+			t.Fatalf("waitForBreakCooldown: %v", err)
+		}
+		if waited := time.Since(began); waited > 10*time.Millisecond {
+			t.Errorf("waited %v for a delay that had passed, want none", waited)
+		}
+	})
+}
