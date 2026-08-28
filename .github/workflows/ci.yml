@@ -23,9 +23,9 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           # Read from go.mod so the toolchain cannot drift from what the module
           # declares. This project has no dependencies, so there is nothing else
@@ -39,9 +39,15 @@ jobs:
       - name: vet
         run: make vet
 
-      - uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@v8
         with:
-          version: latest
+          # Pinned, and pinned to the v2 line on purpose. The action's major
+          # version decides which golangci-lint line it knows about: v6 only
+          # installs v1, so `version: latest` there quietly fetched v1.64.8,
+          # which is built with go1.24 and refuses a go.mod targeting 1.26 —
+          # a Go-version error that says nothing about the real mismatch.
+          # Keep this in step with the version in the Makefile's install hint.
+          version: v2.13.1
           # The Makefile finds golangci-lint wherever it is; the action installs
           # its own, so let the action drive it and keep one config file.
           args: --config .golangci.yml
@@ -58,8 +64,8 @@ jobs:
   generated:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - name: the version tables compile and register
@@ -81,14 +87,14 @@ jobs:
           - { pkg: ./understudy, name: FuzzSkipComponent }
           - { pkg: ./understudy, name: FuzzReadSlot }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - run: go test ${{ matrix.target.pkg }} -fuzz ${{ matrix.target.name }} -fuzztime 5m
       - name: keep whatever it found
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: fuzz-${{ matrix.target.name }}
           path: "**/testdata/fuzz/**"
