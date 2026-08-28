@@ -173,11 +173,49 @@ try:
           json.dumps(r)[:110])
 
     # --- falling, with the server as the authority on where it landed
-    R(f"tp {NAME} {X}.5 {Y+30} {Z}.5")
-    wait(lambda: get("state")["y"] > Y + 25, 8)
+    # Ten blocks, not thirty. Thirty is lethal — 27 damage against 20 health —
+    # and this check is about landing on the floor, not about dying on it. It
+    # asked for thirty back when fall damage was under-applied and a drop that
+    # should have killed left the bot on 3 health.
+    R(f"tp {NAME} {X}.5 {Y+10} {Z}.5")
+    wait(lambda: get("state")["y"] > Y + 8, 8)
     post("fall")
     landed = wait(lambda: abs(get("state")["y"] - Y) < 1.5, 12)
     check("auto-fall lands the bot on the floor", landed, f"y={get('state')['y']}")
+
+    # --- fall damage fidelity, which is what makes a "lethal fall" test possible
+    #
+    # A correction mid-descent used to be read as a landing, which left the bot
+    # hovering until the server kicked it for flying; and the simulated descent
+    # could sit above the server's own idea of the player, so every packet was
+    # an upward jump answered with "moved too quickly" — and each of those
+    # resets the server's fall distance. A 120-block drop landed for 15 damage
+    # instead of a lethal 117.
+    def drop_from(height):
+        R(f"effect give {NAME} minecraft:instant_health 1 10 true")
+        time.sleep(0.3)
+        R(f"effect clear {NAME}", f"tp {NAME} {X}.5 {Y+height} {Z}.5")
+        wait(lambda: abs(get("state")["y"] - (Y + height)) < 3, 10)
+        wait(lambda: get("ground")["known"], 10)
+        before = get("state")["deaths"]
+        post("fall")
+        time.sleep(1.2)
+        st = get("state")
+        return st["deaths"] > before, st
+
+    fatal, st = drop_from(10)
+    check("a ten block fall is survivable", not fatal, f"deaths rose, hp={st['health']}")
+    check("and it hurt", st["health"] < 20, f"hp={st['health']} — no fall damage was applied")
+
+    fatal, _ = drop_from(40)
+    check("a forty block fall is lethal", fatal,
+          "survived a drop that vanilla makes fatal — the server's fall distance "
+          "is being reset mid-descent")
+
+    R(f"tp {NAME} {X}.5 {Y} {Z}.5")
+    wait(lambda: abs(get("state")["y"] - Y) < 1.5, 8)
+    check("the client is still connected after all that",
+          get("state")["joined"] is True)
 finally:
     print(f"\n=== {len(passed)} passed, {len(failed)} failed" +
           (f"   failures: {', '.join(failed)}" if failed else ""))

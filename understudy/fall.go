@@ -15,6 +15,12 @@ const (
 	fallDrag       = 0.98
 )
 
+// maxFallResumes bounds how many times a mid-fall correction may be treated as
+// a hiccup rather than a landing. A few is generous — a clean fall takes none —
+// and the bound is what stops a bot that really has landed from arguing with
+// the server about it forever.
+const maxFallResumes = 8
+
 // MaxFallBlocks bounds a self-detecting fall. Without a floor beneath it a bot
 // would otherwise descend into the void forever, so an unbounded search is
 // reported as an error instead of a very slow death.
@@ -164,6 +170,7 @@ func (c *Client) descend(ctx context.Context, d descent) (blocks float64, err er
 
 	x, y, z := d.start.X, d.start.Y, d.start.Z
 	velocity := 0.0
+	resumed := 0
 
 	for d.start.Y-y < MaxFallBlocks {
 		velocity = (velocity - gravityPerTick) * fallDrag
@@ -188,14 +195,58 @@ func (c *Client) descend(ctx context.Context, d descent) (blocks float64, err er
 			return d.start.Y - c.Position().Y, nil
 		}
 		if c.Corrections() > corrections {
-			// The server refused the descent: we are standing on something. Its
-			// position is authoritative, so adopt it and confirm on-ground.
-			landed := c.Position()
-			return d.start.Y - landed.Y, c.sendPosition(landed.X, landed.Y, landed.Z, true)
+			// A correction usually means the server refused the descent because
+			// something is under us. It does not always: a tick the client was
+			// late to send arrives as one large step, the server calls that
+			// "moved too quickly" and snaps the player back, and on a long fall
+			// there are hundreds of chances for that to happen.
+			//
+			// Treating every correction as a landing is what produced the
+			// flying kick. The descent stopped nineteen blocks above the floor,
+			// announced itself settled, claimed on-ground — and the bot then
+			// hovered, reporting a stationary airborne position, until the
+			// server disconnected it for flying.
+			//
+			// So ask the terrain. If the floor is known and still below us,
+			// this was not a landing: adopt the corrected position and keep
+			// falling from there.
+			at := c.Position()
+			corrections = c.Corrections()
+			if resumed < maxFallResumes {
+				if s := c.GroundBelow(); s.Known && s.Found && at.Y-s.GroundY > 1 {
+					resumed++
+					c.log.Debug("correction mid-fall was not a landing, still descending",
+						"y", at.Y, "ground", s.GroundY)
+					x, y, z = at.X, at.Y, at.Z
+					velocity = 0
+					continue
+				}
+			}
+			// Either we are at the floor, or the terrain cannot say. Landing is
+			// the safe reading: the server arbitrates, and a bot that claims to
+			// stand while falling is corrected, where one that claims to fly
+			// while standing is kicked.
+			return d.start.Y - at.Y, c.sendPosition(at.X, at.Y, at.Z, true)
 		}
 		// Track sideways corrections so the column stays under the bot.
 		cur := c.Position()
 		x, z = cur.X, cur.Z
+		// And never claim to be higher than the server last put us.
+		//
+		// The descent simulates from rest, but the bot is usually already
+		// falling when it starts — a teleport into the air begins a fall
+		// server-side immediately. The simulation is then above the server's
+		// idea of the player, every packet is an upward jump, and the server
+		// answers "moved too quickly". Each of those resets its fall distance,
+		// which is why a hundred-and-twenty-block drop landed for fifteen
+		// damage instead of a lethal hundred and seventeen.
+		//
+		// Taking the lower of the two is the honest reading: the server is the
+		// authority on where the player is, and it can only be at or below what
+		// we simulated.
+		if cur.Y < y {
+			y = cur.Y
+		}
 	}
 	if d.blind {
 		return d.start.Y - y, fmt.Errorf(
