@@ -276,7 +276,32 @@ func (c *Client) DropHeld(ctx context.Context, all bool) error {
 	if all {
 		status = protocol.DigDropStack
 	}
-	return c.blockDig(ctx, status, 0, 0, 0, 0)
+	if err := c.blockDig(ctx, status, 0, 0, 0, 0); err != nil {
+		return err
+	}
+	c.forgetDropped(all)
+	return nil
+}
+
+// forgetDropped takes the dropped items out of this client's own view.
+//
+// The server does not echo a slot update for a drop: a vanilla client predicts
+// the change itself, and the server only corrects it if the two disagree. So a
+// client that waits to be told stays wrong forever — the count still reads 32
+// after the whole stack is on the ground, and a test asserting on it waits out
+// its timeout while the server's own drop statistic says it worked.
+func (c *Client) forgetDropped(all bool) {
+	slot := SlotHotbarStart + c.HeldSlot()
+	held, ok := c.inv.Slot(slot)
+	if !ok || held.Empty() {
+		return
+	}
+	if all || held.Count <= 1 {
+		c.inv.SetSlot(slot, ItemStack{Slot: slot})
+		return
+	}
+	held.Count--
+	c.inv.SetSlot(slot, held)
 }
 
 // releaseUse ends a held right-click — the packet that actually commits eating,

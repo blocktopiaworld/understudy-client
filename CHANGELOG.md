@@ -17,6 +17,13 @@ server-list ping.
 
 ### Fixed
 
+- Dropping moved nothing in the client's own view. The server's `minecraft:drop`
+  statistic incremented and the item landed on the ground, while `/inventory`
+  went on reporting a full stack indefinitely. The server sends no slot update
+  for a drop — a vanilla client predicts the change and is corrected only on
+  disagreement — and this one waited to be told. Found by the conformance suite.
+
+
 - `WalkTo` spun until the caller's context expired when something was in the
   way, then reported "context deadline exceeded" — sixty seconds of nothing,
   blamed on the timeout rather than on the wall. It now gives up after a second

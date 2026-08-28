@@ -1,6 +1,7 @@
 package understudy
 
 import (
+	"context"
 	"testing"
 
 	"github.com/blocktopiaworld/understudy-client/protocol"
@@ -354,5 +355,38 @@ func TestContainerOwnSlotsDoNotTouchTheInventory(t *testing.T) {
 			t.Errorf("a container-owned slot reached the player's inventory at %d: %+v",
 				slot, item)
 		}
+	}
+}
+
+// The server does not echo a slot update for a drop — a vanilla client predicts
+// the change and is corrected only on disagreement. This client used to wait to
+// be told, so its count still read a full stack after the whole thing was on the
+// ground, while the server's own drop statistic said otherwise.
+func TestDroppingTakesTheItemsOutOfTheClientsOwnView(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		all  bool
+		want int32
+	}{
+		{"one item", false, 31},
+		{"the whole stack", true, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := settled(t)
+			slot := SlotHotbarStart
+			c.inv.SetSlot(slot, ItemStack{
+				Slot: slot, Name: "minecraft:dirt", Count: 32,
+			})
+			if got := c.CountItem("minecraft:dirt"); got != 32 {
+				t.Fatalf("setup: CountItem = %d, want 32", got)
+			}
+
+			if err := c.DropHeld(context.Background(), tc.all); err != nil {
+				t.Fatalf("DropHeld: %v", err)
+			}
+			if got := c.CountItem("minecraft:dirt"); got != tc.want {
+				t.Errorf("CountItem after dropping = %d, want %d", got, tc.want)
+			}
+		})
 	}
 }
