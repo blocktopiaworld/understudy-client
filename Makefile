@@ -12,12 +12,24 @@
 # Deliberately an absolute path rather than the bare name: make execs simple
 # recipes directly instead of through a shell, and its own PATH search does not
 # skip an entry it cannot execute the way sh does.
-GO      ?= $(shell for g in $$(command -v -a go 2>/dev/null) /snap/bin/go /usr/local/go/bin/go; do \
+# `command -v -a` is a bashism and make runs $(shell) under /bin/sh, which on
+# Debian and on the CI runners is dash — where it is an error, not a fallback.
+# So the plain form is in the list too, and it is the one that answers there.
+GO      ?= $(shell for g in $$(command -v -a go 2>/dev/null) $$(command -v go 2>/dev/null) \
+	              /snap/bin/go /usr/local/go/bin/go; do \
 	           "$$g" version >/dev/null 2>&1 && echo "$$g" && break; done)
+
+# An empty GO turns every recipe into an attempt to run "vet" or "test" as a
+# program, and make reports that as "No such file or directory" against a name
+# nobody wrote. Say what is actually wrong instead.
+ifeq ($(strip $(GO)),)
+$(error no working go toolchain found; install Go or run `make GO=/path/to/go`)
+endif
 
 # Likewise for golangci-lint, which `go install` puts in GOPATH/bin — a
 # directory that is frequently not on PATH.
 GOLANGCI ?= $(shell for l in $$(command -v -a golangci-lint 2>/dev/null) \
+	              $$(command -v golangci-lint 2>/dev/null) \
 	              "$$HOME/go/bin/golangci-lint"; do \
 	           "$$l" --version >/dev/null 2>&1 && echo "$$l" && break; done)
 
