@@ -4,8 +4,12 @@ Each of these needs the matching block open first, via
 [`POST /container/open`](containers.md#post-containeropen). They place the
 inputs, press whatever needs pressing, wait for the result and take it.
 
-All return the resulting `item` and `count`, and fail with `409` when the
+Most return the resulting `item` and `count`, and all fail with `409` when the
 station produces nothing — which the server does not otherwise report.
+
+`/brew` and `/beacon` are the exceptions: they answer with the envelope alone.
+A `200` means the action completed, and there is no item to report because
+brewing changes bottles in place and a beacon has no output.
 
 Every response below was captured from a live 26.2 server.
 

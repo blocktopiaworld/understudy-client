@@ -171,7 +171,8 @@ are accepted and ignored.
 
 ## `POST /container/take`
 
-Shift-clicks a container slot into the player's inventory.
+Shift-clicks a container slot into the player's inventory. Answers with the
+envelope alone — read `GET /container` back if you need to know what moved.
 
 **Parameters**
 
