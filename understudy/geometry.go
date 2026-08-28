@@ -1,6 +1,6 @@
 package understudy
 
-import "github.com/blocktopia/understudy-client/internal/geom"
+import "github.com/block-topia/understudy-client/internal/geom"
 
 // Player and world geometry, re-exported from internal/geom so callers of this
 // package do not have to reach into an internal one for a constant.

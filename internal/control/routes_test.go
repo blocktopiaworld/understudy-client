@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	understudy "github.com/blocktopia/understudy-client/understudy"
+	understudy "github.com/block-topia/understudy-client/understudy"
 )
 
 func newTestServer(bot Bot) http.Handler {

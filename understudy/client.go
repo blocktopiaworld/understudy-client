@@ -11,11 +11,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/blocktopia/understudy-client/internal/entities"
-	"github.com/blocktopia/understudy-client/internal/inventory"
-	"github.com/blocktopia/understudy-client/internal/nbt"
-	"github.com/blocktopia/understudy-client/internal/world"
-	"github.com/blocktopia/understudy-client/protocol"
+	"github.com/block-topia/understudy-client/internal/entities"
+	"github.com/block-topia/understudy-client/internal/inventory"
+	"github.com/block-topia/understudy-client/internal/nbt"
+	"github.com/block-topia/understudy-client/internal/world"
+	"github.com/block-topia/understudy-client/protocol"
 )
 
 // Default timeouts, applied by New when Options leaves them zero.

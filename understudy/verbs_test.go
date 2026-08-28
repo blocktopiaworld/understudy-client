@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/blocktopia/understudy-client/protocol"
+	"github.com/block-topia/understudy-client/protocol"
 )
 
 // The verbs are defined by the packets they put on the wire, so they are

@@ -10,4 +10,4 @@ package understudy
 // The tables live in their own package because they are ~9,700 generated lines
 // that would otherwise bury the hand-written wire layer in a directory listing.
 // See protocol/doc.go.
-import _ "github.com/blocktopia/understudy-client/protocol/versions"
+import _ "github.com/block-topia/understudy-client/protocol/versions"

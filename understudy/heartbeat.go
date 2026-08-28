@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/blocktopia/understudy-client/protocol"
+	"github.com/block-topia/understudy-client/protocol"
 )
 
 // markPositionSent stamps when a movement packet last went out.

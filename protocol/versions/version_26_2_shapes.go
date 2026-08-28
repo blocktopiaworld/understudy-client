@@ -7,7 +7,7 @@ package versions
 // Coordinates are thirty-seconds of a block. Every vanilla shape is an exact
 // multiple of 1/32, so this is lossless rather than rounded.
 
-import "github.com/blocktopia/understudy-client/protocol"
+import "github.com/block-topia/understudy-client/protocol"
 
 // v26_2Shapes is indexed by the shape id in v26_2ShapeRuns.
 var v26_2Shapes = [][]protocol.Box{

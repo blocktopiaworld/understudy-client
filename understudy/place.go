@@ -3,7 +3,7 @@ package understudy
 import (
 	"context"
 
-	"github.com/blocktopia/understudy-client/protocol"
+	"github.com/block-topia/understudy-client/protocol"
 )
 
 // placeAttempts is how many times PlaceBlockVerified will send the packet.

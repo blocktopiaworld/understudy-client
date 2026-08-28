@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/blocktopia/understudy-client/protocol"
+	"github.com/block-topia/understudy-client/protocol"
 )
 
 // TradeOffer is one entry in a villager's or wandering trader's offer list.

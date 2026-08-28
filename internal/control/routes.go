@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/blocktopia/understudy-client/protocol"
-	"github.com/blocktopia/understudy-client/understudy"
+	"github.com/block-topia/understudy-client/protocol"
+	"github.com/block-topia/understudy-client/understudy"
 )
 
 // Defaults for the optional fields the JSON API exposes.

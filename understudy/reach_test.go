@@ -3,7 +3,7 @@ package understudy
 import (
 	"testing"
 
-	"github.com/blocktopia/understudy-client/protocol"
+	"github.com/block-topia/understudy-client/protocol"
 )
 
 // Reach is measured from the eyes to the nearest point of the block's box —

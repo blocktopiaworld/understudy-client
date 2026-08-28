@@ -3,7 +3,7 @@ package understudy
 import (
 	"testing"
 
-	"github.com/blocktopia/understudy-client/protocol"
+	"github.com/block-topia/understudy-client/protocol"
 )
 
 // The teleport packet's flags field is the last one, and reading it is what

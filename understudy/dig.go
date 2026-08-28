@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/blocktopia/understudy-client/protocol"
+	"github.com/block-topia/understudy-client/protocol"
 )
 
 // nextSequence numbers this bot's block actions. Since 1.19 every dig and

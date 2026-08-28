@@ -6,8 +6,8 @@ import (
 	"os"
 	"sync"
 
-	"github.com/blocktopia/understudy-client/internal/inventory"
-	"github.com/blocktopia/understudy-client/protocol"
+	"github.com/block-topia/understudy-client/internal/inventory"
+	"github.com/block-topia/understudy-client/protocol"
 )
 
 // ItemStack is one inventory slot's contents.

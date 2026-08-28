@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/blocktopia/understudy-client/internal/geom"
+	"github.com/block-topia/understudy-client/internal/geom"
 )
 
 // RayHit is a block the crosshair landed on.

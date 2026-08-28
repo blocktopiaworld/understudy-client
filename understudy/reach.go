@@ -3,8 +3,8 @@ package understudy
 import (
 	"fmt"
 
-	"github.com/blocktopia/understudy-client/internal/geom"
-	"github.com/blocktopia/understudy-client/protocol"
+	"github.com/block-topia/understudy-client/internal/geom"
+	"github.com/block-topia/understudy-client/protocol"
 )
 
 // BlockReach is how far a survival player can reach a block, in blocks.

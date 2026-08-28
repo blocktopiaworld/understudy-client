@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/blocktopia/understudy-client/protocol"
+	"github.com/block-topia/understudy-client/protocol"
 )
 
 // TeleportSettle bounds how long a block interaction will wait for a teleport

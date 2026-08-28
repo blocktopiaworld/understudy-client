@@ -6,7 +6,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/blocktopia/understudy-client/protocol"
+	"github.com/block-topia/understudy-client/protocol"
 )
 
 // The server's recipe book.

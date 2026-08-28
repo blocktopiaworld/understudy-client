@@ -3,7 +3,7 @@ package understudy
 import (
 	"testing"
 
-	"github.com/blocktopia/understudy-client/protocol"
+	"github.com/block-topia/understudy-client/protocol"
 )
 
 func stack(slot int, name string, count int32) ItemStack {

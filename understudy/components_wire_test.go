@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/blocktopia/understudy-client/protocol"
+	"github.com/block-topia/understudy-client/protocol"
 )
 
 // Every payload here was cut out of a real window_items packet from a 26.1

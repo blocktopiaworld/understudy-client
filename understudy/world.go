@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/blocktopia/understudy-client/internal/geom"
-	"github.com/blocktopia/understudy-client/internal/nbt"
-	"github.com/blocktopia/understudy-client/protocol"
+	"github.com/block-topia/understudy-client/internal/geom"
+	"github.com/block-topia/understudy-client/internal/nbt"
+	"github.com/block-topia/understudy-client/protocol"
 )
 
 // BlockAt returns the block state at world coordinates.
