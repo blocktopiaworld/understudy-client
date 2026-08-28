@@ -92,7 +92,10 @@ func (c *Client) WalkTo(ctx context.Context, x, y, z float64) error {
 		dx, dy, dz := x-pos.X, y-pos.Y, z-pos.Z
 		dist := geom.Length(dx, dy, dz)
 		if dist <= step {
-			return c.MoveTo(x, y, z)
+			if err := c.MoveTo(x, y, z); err != nil {
+				return err
+			}
+			return c.settleAfterWalk(ctx)
 		}
 		// Walking into a wall is not an error the server reports: it corrects
 		// the position back and the loop asks again, forever. Left to itself
@@ -119,6 +122,36 @@ func (c *Client) WalkTo(ctx context.Context, x, y, z float64) error {
 	}
 }
 
+// settleAfterWalk drops the bot if the walk finished over a hole.
+//
+// WalkTo is dead reckoning at a constant height: it interpolates toward the
+// target and gravity is not part of that. So a walk that steps off a ledge ends
+// with the bot standing in mid-air, still telling the server it is on the
+// ground — and vanilla kicks a floating player after about four seconds with
+// "multiplayer.disconnect.flying".
+//
+// Auto-fall does not cover this. It runs on a server teleport, which is the
+// other way a bot ends up airborne, and walking off an edge never triggers it.
+// That gap is why the flying kick kept coming back after each fix to the
+// teleport path: they are two different paths and only one of them was fixed.
+//
+// A real player who walks off a ledge falls, so this does too — with real
+// gravity and real fall damage, which is also what a test walking off a ledge
+// to check a totem is asking for.
+func (c *Client) settleAfterWalk(ctx context.Context) error {
+	support := c.GroundBelow()
+	if !support.Known || !support.Found || c.Position().Y-support.GroundY <= gravityEpsilon {
+		// On the ground, or over a column that has not been sent. Falling into
+		// terrain the client has not received is the mistake that made a bot
+		// hover in the first place, so unknown means leave it alone.
+		return nil
+	}
+	if _, err := c.Fall(ctx); err != nil {
+		return fmt.Errorf("understudy: walked off an edge and could not settle: %w", err)
+	}
+	return nil
+}
+
 // walkStallTicks is how long WalkTo tolerates getting no closer before it
 // gives up, and walkProgressEpsilon is what counts as closer. One second is
 // well beyond the jitter of a server correcting a legitimate step, and far
@@ -126,6 +159,11 @@ func (c *Client) WalkTo(ctx context.Context, x, y, z float64) error {
 const (
 	walkStallTicks      = 20
 	walkProgressEpsilon = 1e-3
+
+	// gravityEpsilon is how far above the floor still counts as standing on
+	// it. Position arithmetic lands fractionally off, and falling 0.0001 of a
+	// block would be a round trip for nothing.
+	gravityEpsilon = 0.05
 )
 
 // sleep waits for a tick or for ctx to be cancelled, reporting cancellation as

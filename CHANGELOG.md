@@ -37,6 +37,14 @@ server-list ping.
 
 ### Fixed
 
+- Walking off a ledge left the bot standing in mid-air until the server kicked
+  it for flying. `WalkTo` is dead reckoning at a constant height and gravity was
+  never part of it, while auto-fall only covers a *teleport* into mid-air. Two
+  different paths, and only one of them had been fixed — which is why the flying
+  kick kept coming back. A walk that ends over a drop now falls, with real
+  gravity and real fall damage.
+
+
 - Dropping moved nothing in the client's own view. The server's `minecraft:drop`
   statistic incremented and the item landed on the ground, while `/inventory`
   went on reporting a full stack indefinitely. The server sends no slot update
