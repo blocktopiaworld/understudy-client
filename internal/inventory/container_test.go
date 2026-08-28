@@ -213,3 +213,54 @@ func TestSizeSurvivesATruncatedDecode(t *testing.T) {
 		t.Error("Slot(41) is outside a 41-slot window")
 	}
 }
+
+// FindFrom used to slice the slot list by array position, which is the same as
+// the slot number only while the list is dense from zero. ReplaceAll pads to
+// the declared size by appending to the end, so a single stack recorded for
+// slot 37 sits at index 0 — and slicing from 10 stepped straight over it.
+//
+// The symptom was a crafting table refusing the planks it was plainly holding:
+// CountFrom filtered on the slot number and said eight, FindFrom sliced by
+// index and said none, reading the same list.
+func TestFindFromUsesTheSlotNumberNotThePosition(t *testing.T) {
+	planks := ItemStack{Slot: 37, Name: "minecraft:oak_planks", Count: 8}
+
+	for _, tc := range []struct {
+		name  string
+		slots []ItemStack
+	}{
+		{"dense, as a full window_items delivers", denseWith(46, planks)},
+		{"one stack padded to the declared size", []ItemStack{planks}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &Container{}
+			c.ReplaceAll(tc.slots, 46, false)
+
+			if got := c.CountFrom("oak_planks", 10); got != 8 {
+				t.Errorf("CountFrom = %d, want 8", got)
+			}
+			got, ok := c.FindFrom("oak_planks", 10)
+			if !ok {
+				t.Fatal("FindFrom did not find the planks CountFrom can see")
+			}
+			if got.Slot != 37 {
+				t.Errorf("found slot %d, want 37", got.Slot)
+			}
+			// And the floor still does its job: the grid is below it.
+			if _, ok := c.FindFrom("oak_planks", 38); ok {
+				t.Error("FindFrom above the stack found it anyway")
+			}
+		})
+	}
+}
+
+func denseWith(size int, items ...ItemStack) []ItemStack {
+	out := make([]ItemStack, size)
+	for i := range out {
+		out[i] = ItemStack{Slot: i}
+	}
+	for _, item := range items {
+		out[item.Slot] = item
+	}
+	return out
+}

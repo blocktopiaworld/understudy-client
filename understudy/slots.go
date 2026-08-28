@@ -3,6 +3,7 @@ package understudy
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -37,6 +38,33 @@ func (c *Client) PutOneIntoSlot(ctx context.Context, name string, slot int) (Ite
 	return c.moveIntoSlot(ctx, name, slot, true)
 }
 
+// describeSlots names what a window is actually holding, for an error that
+// would otherwise only say what is missing. "No planks" and "no planks, and
+// nothing else either" are different problems.
+func describeSlots(slots []ItemStack, floor int) string {
+	var out []string
+	for _, item := range slots {
+		if item.Slot < floor || item.Empty() {
+			continue
+		}
+		out = append(out, fmt.Sprintf("%d:%s x%d", item.Slot, item.Name, item.Count))
+	}
+	if len(out) == 0 {
+		return "nothing at all"
+	}
+	return strings.Join(out, ", ")
+}
+
+// truncatedNote says when the window's contents are known to be incomplete,
+// which turns "the item is not there" into "the client could not read the
+// packet that would have said so".
+func truncatedNote(truncated bool) string {
+	if !truncated {
+		return ""
+	}
+	return " (the window's contents did not decode fully, so this list is short)"
+}
+
 func (c *Client) moveIntoSlot(ctx context.Context, name string, slot int, single bool) (ItemStack, error) {
 	if !c.window.IsOpen() {
 		return ItemStack{}, ErrNoContainer
@@ -45,8 +73,9 @@ func (c *Client) moveIntoSlot(ctx context.Context, name string, slot int, single
 	src, ok := c.window.FindFrom(name, floor)
 	if !ok {
 		return ItemStack{}, fmt.Errorf(
-			"understudy: no %q in the player's rows of this %s window (searched from slot %d)",
-			name, c.ContainerType(), floor)
+			"understudy: no %q in the player's rows of this %s window; slot %d and above hold %s",
+			name, c.ContainerType(), floor,
+			describeSlots(c.ContainerSlots(), floor)+truncatedNote(c.ContainerTruncated()))
 	}
 	// Pick up the stack, then place. Right-click (button 1) drops a single
 	// item; left-click puts the lot down.

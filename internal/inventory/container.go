@@ -218,16 +218,29 @@ func (c *Container) Count(name string) int32 {
 // lowest match — so once an ingredient has been placed into the grid, the next
 // lookup finds *that* one and the loop picks its own work back up, assembling
 // a single-item recipe forever. Same reason Inventory has FindInStorage.
+// The floor is compared against each stack's own slot number, not against its
+// position in the list. Those are the same thing only while the list is dense
+// from zero, which is what a full window_items delivers — but not what every
+// path that fills this leaves behind, and the padding in ReplaceAll appends to
+// the end rather than into place. A single stack recorded for slot 37 then sits
+// at index 0, where slicing from 10 steps straight over it.
+//
+// That is exactly how a crafting table came to refuse the planks it was
+// holding: CountFrom filters on the slot number and reported eight, FindFrom
+// sliced by index and reported none, and both were reading the same list.
 func (c *Container) FindFrom(name string, floor int) (ItemStack, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	if floor <= 0 {
 		return Find(c.slots, name)
 	}
-	if floor >= len(c.slots) {
-		return ItemStack{}, false
+	above := make([]ItemStack, 0, len(c.slots))
+	for _, item := range c.slots {
+		if item.Slot >= floor {
+			above = append(above, item)
+		}
 	}
-	return Find(c.slots[floor:], name)
+	return Find(above, name)
 }
 
 // CountFrom totals a named item at or above a slot floor.

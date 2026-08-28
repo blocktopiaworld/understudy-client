@@ -226,16 +226,21 @@ func (c *Client) awaitContainer(
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-retry.C:
-			// Ask again. An entity that has only just spawned is not ready to
-			// trade for a second or so, and a single interact sent inside that
-			// window is answered with nothing at all — which arrives here as
-			// "the target may not have a UI", a confident and wrong diagnosis
-			// of "not yet". A freshly summoned wandering trader failed to open
-			// four times in six on the first ask and every time on the second.
+			// Ask again, but only while nothing has opened. An entity that has
+			// only just spawned is not ready to trade for a second or so, and a
+			// single interact sent inside that window is answered with nothing
+			// at all — which arrives as "the target may not have a UI", a
+			// confident and wrong diagnosis of "not yet". A freshly summoned
+			// wandering trader failed to open four times in six on the first
+			// ask and every time on the second.
 			//
-			// Same shape as waiting for a block to become targetable before
-			// refusing to dig it: not ready is not the same as never.
-			if again != nil {
+			// The guard matters as much as the retry. Interacting again when a
+			// window is already open makes the server close it and send a new
+			// one, and the contents of the new window arrive after this has
+			// returned — so the caller acts on a window whose player rows are
+			// momentarily empty, and a crafting table refuses the planks it is
+			// plainly holding.
+			if again != nil && c.window.Sequence() == before {
 				if err := again(); err != nil {
 					return err
 				}
