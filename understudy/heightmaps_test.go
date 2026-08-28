@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/block-topia/understudy-client/protocol"
+	"github.com/blocktopiaworld/understudy-client/protocol"
 )
 
 // The heightmaps sit between the chunk coordinates and the chunk data, and

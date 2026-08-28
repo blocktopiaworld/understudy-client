@@ -3,7 +3,7 @@ package versions
 import (
 	"testing"
 
-	"github.com/block-topia/understudy-client/protocol"
+	"github.com/blocktopiaworld/understudy-client/protocol"
 )
 
 // The point of carrying real shapes is the cases boundingBox cannot express.

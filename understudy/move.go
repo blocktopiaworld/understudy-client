@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/block-topia/understudy-client/internal/geom"
-	"github.com/block-topia/understudy-client/protocol"
+	"github.com/blocktopiaworld/understudy-client/internal/geom"
+	"github.com/blocktopiaworld/understudy-client/protocol"
 )
 
 // TickRate is the server tick, and the natural cadence for movement updates.

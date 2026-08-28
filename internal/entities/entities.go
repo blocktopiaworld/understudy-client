@@ -13,7 +13,7 @@ package entities
 import (
 	"sync"
 
-	"github.com/block-topia/understudy-client/protocol"
+	"github.com/blocktopiaworld/understudy-client/protocol"
 )
 
 // Entity is a tracked entity in the client's view of the world.

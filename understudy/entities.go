@@ -8,9 +8,9 @@ import (
 	"slices"
 	"time"
 
-	"github.com/block-topia/understudy-client/internal/entities"
-	"github.com/block-topia/understudy-client/internal/geom"
-	"github.com/block-topia/understudy-client/protocol"
+	"github.com/blocktopiaworld/understudy-client/internal/entities"
+	"github.com/blocktopiaworld/understudy-client/internal/geom"
+	"github.com/blocktopiaworld/understudy-client/protocol"
 )
 
 // Entity is a tracked entity in the bot's view of the world.

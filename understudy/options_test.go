@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/block-topia/understudy-client/protocol"
+	"github.com/blocktopiaworld/understudy-client/protocol"
 )
 
 func TestNewRequiresAddrAndUsername(t *testing.T) {

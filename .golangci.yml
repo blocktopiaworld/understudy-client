@@ -111,7 +111,7 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - github.com/block-topia/understudy-client
+        - github.com/blocktopiaworld/understudy-client
   exclusions:
     generated: lax
     paths:

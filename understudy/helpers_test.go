@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/block-topia/understudy-client/internal/entities"
-	"github.com/block-topia/understudy-client/internal/inventory"
-	"github.com/block-topia/understudy-client/internal/world"
-	"github.com/block-topia/understudy-client/protocol"
+	"github.com/blocktopiaworld/understudy-client/internal/entities"
+	"github.com/blocktopiaworld/understudy-client/internal/inventory"
+	"github.com/blocktopiaworld/understudy-client/internal/world"
+	"github.com/blocktopiaworld/understudy-client/protocol"
 )
 
 // Block states used throughout these tests. Small and explicit so a test can

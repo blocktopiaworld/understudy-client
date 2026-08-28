@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/block-topia/understudy-client/internal/inventory"
-	"github.com/block-topia/understudy-client/protocol"
+	"github.com/blocktopiaworld/understudy-client/internal/inventory"
+	"github.com/blocktopiaworld/understudy-client/protocol"
 )
 
 // openWindowPacket builds a clientbound open_window: window id, type, then a

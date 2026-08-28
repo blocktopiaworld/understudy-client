@@ -5,8 +5,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/block-topia/understudy-client/protocol"
-	understudy "github.com/block-topia/understudy-client/understudy"
+	"github.com/blocktopiaworld/understudy-client/protocol"
+	understudy "github.com/blocktopiaworld/understudy-client/understudy"
 )
 
 // stubBot is a Bot that records what it was asked to do and returns whatever

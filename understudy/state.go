@@ -1,6 +1,6 @@
 package understudy
 
-import "github.com/block-topia/understudy-client/protocol"
+import "github.com/blocktopiaworld/understudy-client/protocol"
 
 // The player state the server reports, behind one lock.
 //

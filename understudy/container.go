@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/block-topia/understudy-client/internal/inventory"
-	"github.com/block-topia/understudy-client/internal/nbt"
-	"github.com/block-topia/understudy-client/protocol"
+	"github.com/blocktopiaworld/understudy-client/internal/inventory"
+	"github.com/blocktopiaworld/understudy-client/internal/nbt"
+	"github.com/blocktopiaworld/understudy-client/protocol"
 )
 
 // Container slot layouts.

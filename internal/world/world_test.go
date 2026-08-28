@@ -4,7 +4,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/block-topia/understudy-client/protocol"
+	"github.com/blocktopiaworld/understudy-client/protocol"
 )
 
 const (

@@ -3,8 +3,8 @@ package understudy
 import (
 	"fmt"
 
-	"github.com/block-topia/understudy-client/internal/nbt"
-	"github.com/block-topia/understudy-client/protocol"
+	"github.com/blocktopiaworld/understudy-client/internal/nbt"
+	"github.com/blocktopiaworld/understudy-client/protocol"
 )
 
 // Data components.

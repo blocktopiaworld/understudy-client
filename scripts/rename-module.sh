@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Change the module path everywhere it appears.
 #
-#   scripts/rename-module.sh github.com/block-topia/understudy-client
+#   scripts/rename-module.sh github.com/blocktopiaworld/understudy-client
 #
 # The module path has to match the URL the repository is actually published at,
 # or `go install` and `go get` both 404. It appears in go.mod, in every import,

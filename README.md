@@ -60,7 +60,7 @@ and there is no supply chain to audit.
 ## Install
 
 ```sh
-go install github.com/block-topia/understudy-client/cmd/understudy-client@latest
+go install github.com/blocktopiaworld/understudy-client/cmd/understudy-client@latest
 ```
 
 Or from a checkout:
@@ -185,7 +185,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/block-topia/understudy-client/understudy"
+	"github.com/blocktopiaworld/understudy-client/understudy"
 )
 
 func main() {

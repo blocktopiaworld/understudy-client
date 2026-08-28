@@ -6,8 +6,8 @@ import (
 	"math"
 	"time"
 
-	"github.com/block-topia/understudy-client/internal/ballistics"
-	"github.com/block-topia/understudy-client/internal/geom"
+	"github.com/blocktopiaworld/understudy-client/internal/ballistics"
+	"github.com/blocktopiaworld/understudy-client/internal/geom"
 )
 
 // BowFullDraw is how long the bow must be held for maximum power.

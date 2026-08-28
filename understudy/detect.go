@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/block-topia/understudy-client/protocol"
+	"github.com/blocktopiaworld/understudy-client/protocol"
 )
 
 // statusResponse is the part of a server-list ping this client cares about.

@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/block-topia/understudy-client/internal/entities"
-	"github.com/block-topia/understudy-client/internal/inventory"
-	"github.com/block-topia/understudy-client/internal/world"
-	"github.com/block-topia/understudy-client/protocol"
+	"github.com/blocktopiaworld/understudy-client/internal/entities"
+	"github.com/blocktopiaworld/understudy-client/internal/inventory"
+	"github.com/blocktopiaworld/understudy-client/internal/world"
+	"github.com/blocktopiaworld/understudy-client/protocol"
 )
 
 // fakeServer is the far end of an in-memory connection: it records everything

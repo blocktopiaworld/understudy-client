@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/block-topia/understudy-client/protocol"
+	"github.com/blocktopiaworld/understudy-client/protocol"
 )
 
 // SetInput sets the player's movement-input bits (sneak, sprint, jump…).

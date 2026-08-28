@@ -16,9 +16,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/block-topia/understudy-client/internal/control"
-	"github.com/block-topia/understudy-client/protocol"
-	"github.com/block-topia/understudy-client/understudy"
+	"github.com/blocktopiaworld/understudy-client/internal/control"
+	"github.com/blocktopiaworld/understudy-client/protocol"
+	"github.com/blocktopiaworld/understudy-client/understudy"
 )
 
 // buildVersion is stamped at release time with -ldflags "-X main.buildVersion=...".

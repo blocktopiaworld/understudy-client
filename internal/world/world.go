@@ -12,7 +12,7 @@ package world
 import (
 	"sync"
 
-	"github.com/block-topia/understudy-client/protocol"
+	"github.com/blocktopiaworld/understudy-client/protocol"
 )
 
 // key identifies a chunk column.

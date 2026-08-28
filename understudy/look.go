@@ -5,8 +5,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/block-topia/understudy-client/internal/geom"
-	"github.com/block-topia/understudy-client/protocol"
+	"github.com/blocktopiaworld/understudy-client/internal/geom"
+	"github.com/blocktopiaworld/understudy-client/protocol"
 )
 
 // Direction is a named heading, as a rotation the bot can be pointed along.

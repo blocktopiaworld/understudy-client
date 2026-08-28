@@ -3,7 +3,7 @@ package understudy
 import (
 	"testing"
 
-	"github.com/block-topia/understudy-client/protocol"
+	"github.com/blocktopiaworld/understudy-client/protocol"
 )
 
 // component builds a one-item window_items payload carrying a single component,

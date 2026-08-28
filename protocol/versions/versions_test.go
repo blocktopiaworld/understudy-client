@@ -3,7 +3,7 @@ package versions
 import (
 	"testing"
 
-	"github.com/block-topia/understudy-client/protocol"
+	"github.com/blocktopiaworld/understudy-client/protocol"
 )
 
 // Importing this package must be enough to make every version available. That

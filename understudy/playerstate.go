@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/block-topia/understudy-client/protocol"
+	"github.com/blocktopiaworld/understudy-client/protocol"
 )
 
 // The player's own game mode and status effects.

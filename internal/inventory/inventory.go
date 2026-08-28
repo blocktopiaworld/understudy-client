@@ -14,7 +14,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/block-topia/understudy-client/protocol"
+	"github.com/blocktopiaworld/understudy-client/protocol"
 )
 
 // Player inventory slot layout for window 0. These indices are what a

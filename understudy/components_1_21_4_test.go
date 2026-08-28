@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/block-topia/understudy-client/protocol"
+	"github.com/blocktopiaworld/understudy-client/protocol"
 )
 
 // Component payloads captured from a vanilla 1.21.4 server.

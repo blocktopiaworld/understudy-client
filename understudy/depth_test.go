@@ -3,7 +3,7 @@ package understudy
 import (
 	"testing"
 
-	"github.com/block-topia/understudy-client/protocol"
+	"github.com/blocktopiaworld/understudy-client/protocol"
 )
 
 // Components nest through items: a container holds item stacks, an item stack
