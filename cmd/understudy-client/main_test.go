@@ -130,3 +130,29 @@ func TestRunRejectsAnUnknownVersion(t *testing.T) {
 		t.Errorf("error = %q, want it flagged as a configuration error", err)
 	}
 }
+
+// A release binary is stamped by the linker. One installed with `go install
+// ...@v0.1.0` is not — the flags live in the release workflow, not in the
+// module — but Go records the version it built from, and reporting "dev" while
+// knowing it is v0.1.0 is the kind of small dishonesty that wastes an afternoon
+// in a bug report.
+func TestVersionPrefersTheStampAndFallsBackToTheModule(t *testing.T) {
+	original := buildVersion
+	t.Cleanup(func() { buildVersion = original })
+
+	buildVersion = "v1.2.3"
+	if got := version(); got != "v1.2.3" {
+		t.Errorf("version() with a stamp = %q, want the stamp", got)
+	}
+
+	// Unstamped: whatever comes back must be something, and must not be the
+	// placeholder Go uses for a module built from a working tree.
+	buildVersion = ""
+	got := version()
+	if got == "" {
+		t.Error("version() unstamped = empty, want a version or \"dev\"")
+	}
+	if got == "(devel)" {
+		t.Errorf("version() = %q, which is Go's placeholder rather than an answer", got)
+	}
+}

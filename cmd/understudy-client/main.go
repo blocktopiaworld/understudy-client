@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -24,9 +25,28 @@ import (
 // buildVersion is stamped at release time with -ldflags "-X main.buildVersion=...".
 //
 // Named for the build rather than for Minecraft, because -version already means
-// "the Minecraft version to speak" and one of those two had to give way. A
-// binary built any other way says "dev", which is the honest answer.
-var buildVersion = "dev"
+// "the Minecraft version to speak" and one of those two had to give way.
+var buildVersion = ""
+
+// version is what the binary calls itself.
+//
+// A release binary is stamped. A `go install ...@v0.1.0` binary is not — the
+// linker flags live in the release workflow, not in the module — but Go records
+// the module version it built, so ask for that before giving up. Without this
+// an installed binary reports "dev" while knowing perfectly well it is v0.1.0,
+// which is the kind of small dishonesty that wastes somebody's afternoon in a
+// bug report.
+func version() string {
+	if buildVersion != "" {
+		return buildVersion
+	}
+	if info, ok := debug.ReadBuildInfo(); ok {
+		if v := info.Main.Version; v != "" && v != "(devel)" {
+			return v
+		}
+	}
+	return "dev"
+}
 
 func main() {
 	// All the work is in run so that every defer — the signal handler, the
@@ -89,7 +109,7 @@ func run(args []string, stderr *os.File) error {
 
 	if cfg.listVersions {
 		_, err := fmt.Fprintf(stderr, "understudy-client %s\nspeaks: %s\n",
-			buildVersion, strings.Join(protocol.Names(), ", "))
+			version(), strings.Join(protocol.Names(), ", "))
 		return err
 	}
 

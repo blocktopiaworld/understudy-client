@@ -6,6 +6,10 @@ Notable changes. Dates are when the work landed, not when a tag was cut.
 
 ### Added
 
+- A `go install`ed binary reports the version it was installed at. The linker
+  stamp lives in the release workflow, so an installed binary had none and said
+  "dev" while knowing perfectly well it was v0.1.0. It now falls back to the
+  module version Go records.
 - `POST /walk` takes `sprint: true`, and the library gains `SprintTo`. Sprinting
   holds the sprint input for the journey and moves at 5.612 blocks/s, vanilla's
   walking speed times 1.3 — measured at 5.63 against 4.35 walking over the same
