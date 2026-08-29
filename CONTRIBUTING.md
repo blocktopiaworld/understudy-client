@@ -65,7 +65,18 @@ stay as ordinary relative links to the `.md` file: `jekyll-relative-links`
 rewrites them to the built URL, so the same link works on the site and when
 reading the file on GitHub. Writing site URLs by hand breaks the second one.
 
-**Turning it on is a one-time setting**, and it needs the repository to be
+`docs/openapi.yaml` is generated from the control server's route table and
+checked in CI, so adding an endpoint means regenerating it:
+
+```sh
+go run ./internal/gen/genopenapi > docs/openapi.yaml
+```
+
+It is derived rather than written because the prose reference was written by
+reading the handlers and four of its claims were wrong. A hand-maintained
+schema would drift the same way and be believed harder.
+
+**Turning the site on is a one-time setting**, and it needs the repository to be
 public — GitHub Pages is not available for private repositories on the free
 plan. Settings → Pages → Source: *Deploy from a branch*, branch `main`, folder
 `/docs`. No workflow, no CI minutes.

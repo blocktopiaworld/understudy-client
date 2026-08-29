@@ -800,16 +800,19 @@ func (s *Server) handleContainer(w http.ResponseWriter, _ *http.Request) {
 // It cannot find the block for you. The version tables carry item names and
 // block *classification*, not block names, so "the nearest furnace" is not a
 // question this client can answer. Naming the position is the caller's part.
+//
+// The coordinates are pointers because zero is a real coordinate: "not given"
+// has to be distinguishable from "at the origin".
 type station struct {
-	// A block. Pointers because zero is a real coordinate and "not given" has
-	// to be distinguishable from "at the origin".
+	// The block to work at. Give all three or none.
 	X, Y, Z *int32
-	Face    *int32 `json:"face"`
+	// Which face of it to click, 0-5. Defaults to the one facing the bot.
+	Face *int32 `json:"face"`
 
-	// An entity instead, for merchants: a type to take the nearest of, or an
-	// exact id.
-	At       string `json:"at"`
-	EntityID int32  `json:"at_entity_id"`
+	// A merchant to open instead of a block: the nearest entity of this type.
+	At string `json:"at"`
+	// A merchant by exact entity id, from GET /entities.
+	EntityID int32 `json:"at_entity_id"`
 }
 
 // asked reports whether the caller named something to open.

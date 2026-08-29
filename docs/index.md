@@ -22,6 +22,7 @@ fires, and a statistic that only a real interaction increments will not move.
 | | |
 | --- | --- |
 | [HTTP control API](api/) | All 53 endpoints, with every request and response captured from a live server |
+| [API reference](reference/) | The same surface as OpenAPI, generated from the route table |
 | [Adding a version](adding-a-version.md) | The generator runs a new Minecraft release needs |
 
 Runnable scripts live in

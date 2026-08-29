@@ -30,6 +30,11 @@ permalink: pretty
 exclude:
   - go-style.md
 
+# Copied through as-is: the reference viewer is a plain page, and the spec is
+# data the viewer fetches.
+include:
+  - openapi.yaml
+
 # ── theme ────────────────────────────────────────────────────────────────────
 color_scheme: light
 search_enabled: true
@@ -52,5 +57,7 @@ footer_content: >-
   or Microsoft.
 
 nav_external_links:
+  - title: API reference (OpenAPI)
+    url: https://blocktopiaworld.github.io/understudy-client/reference/
   - title: Releases
     url: https://github.com/blocktopiaworld/understudy-client/releases

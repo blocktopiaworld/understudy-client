@@ -13,6 +13,11 @@ understudy-client -addr localhost:25565 -username Probe -hold 0 -control 8181
 
 There is **no authentication**. Bind it to loopback.
 
+Prefer a reference to a guide? The same surface is published as
+[OpenAPI](../reference/), generated from the server's own route table — so the
+request shapes there are the ones the server accepts, by construction. The
+worked examples are here.
+
 ## Pages
 
 | Page | Endpoints |

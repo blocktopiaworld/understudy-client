@@ -71,6 +71,17 @@ jobs:
       - name: the version tables compile and register
         run: go test ./protocol/... -run Version -count=1
 
+      # The OpenAPI document is derived from the route table, so a route added
+      # without regenerating it is a document that quietly describes the wrong
+      # server. Cheaper to catch here than in somebody's client.
+      - name: the OpenAPI document matches the routes
+        run: |
+          go run ./internal/gen/genopenapi > /tmp/openapi.yaml
+          if ! diff -u docs/openapi.yaml /tmp/openapi.yaml; then
+            echo "::error::docs/openapi.yaml is stale — run: go run ./internal/gen/genopenapi > docs/openapi.yaml"
+            exit 1
+          fi
+
   # The seed corpus runs as part of `make race` — a fuzz target is an ordinary
   # test until you pass -fuzz. This job goes looking for new inputs, which is
   # worth doing on a schedule rather than on every push: the two defects it has

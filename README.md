@@ -88,8 +88,10 @@ and response captured from a live server.
 
 **[Full API reference →](docs/api/)**  ·  **[Runnable examples →](examples/)**
 
-The same reference reads better as a site once Pages is on:
-`https://blocktopiaworld.github.io/understudy-client/`.
+Both read better on the site:
+**[the guide](https://blocktopiaworld.github.io/understudy-client/)** and
+**[the OpenAPI reference](https://blocktopiaworld.github.io/understudy-client/reference/)**,
+the latter generated from the route table.
 
 There is no authentication. Bind it to loopback.
 
