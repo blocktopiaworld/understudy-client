@@ -594,10 +594,41 @@ components:
         pitch: { type: number }
     Error:
       type: object
+      required: [error]
       properties:
         error:
           type: string
           description: What went wrong, and usually what to do about it.
+        reason:
+          type: string
+          description: |
+            A short stable code for the kind of refusal, on a 409. Present when
+            the client knows which it has, absent when it does not — because a
+            guess here is worse than a silence.
+          enum:
+            - not_targetable
+            - not_tracked
+            - locked_out
+            - too_hungry
+            - dead
+            - no_such_item
+            - out_of_reach
+            - occluded
+            - no_window
+            - wrong_window
+            - no_offers
+            - no_such_trade
+            - no_ui
+            - blocked
+            - unchanged
+            - unsupported
+        retryable:
+          type: boolean
+          description: |
+            Whether the same call, unchanged, could succeed later. A caller
+            waiting on an action can stop the moment this is false rather than
+            spending its whole timeout on something that will not become true.
+            Absent alongside "reason".
 `
 
 const responses = `      responses:

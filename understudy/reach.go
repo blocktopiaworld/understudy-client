@@ -45,7 +45,9 @@ func (c *Client) requireAlive(action string) error {
 		return fmt.Errorf("understudy: cannot %s before entering play state", action)
 	}
 	if c.Dead() {
-		return fmt.Errorf("understudy: cannot %s while dead", action)
+		// Retryable: a bot respawns, by itself unless told not to.
+		return refuse(ReasonDead, true,
+			fmt.Errorf("understudy: cannot %s while dead", action))
 	}
 	return nil
 }
@@ -57,8 +59,9 @@ func (c *Client) requireAlive(action string) error {
 // normally — the same failure mode that made attacks miss silently.
 func (c *Client) requireReach(action string, x, y, z int32) error {
 	if d := c.BlockDistance(x, y, z); d > BlockReach {
-		return fmt.Errorf("understudy: cannot %s block at %d,%d,%d — %.2f blocks away, beyond the %.1f block reach",
-			action, x, y, z, d, BlockReach)
+		return refuse(ReasonOutOfReach, false,
+			fmt.Errorf("understudy: cannot %s block at %d,%d,%d — %.2f blocks away, beyond the %.1f block reach",
+				action, x, y, z, d, BlockReach))
 	}
 	return nil
 }
@@ -66,8 +69,9 @@ func (c *Client) requireReach(action string, x, y, z int32) error {
 // requireEntityReach rejects an attack or interaction the server would ignore.
 func (c *Client) requireEntityReach(action string, e Entity) error {
 	if d := c.DistanceTo(e); d > AttackReach {
-		return fmt.Errorf("understudy: nearest %s (entity %d) is %.2f blocks away, beyond the %.1f block %s reach",
-			e.TypeName, e.ID, d, AttackReach, action)
+		return refuse(ReasonOutOfReach, false,
+			fmt.Errorf("understudy: nearest %s (entity %d) is %.2f blocks away, beyond the %.1f block %s reach",
+				e.TypeName, e.ID, d, AttackReach, action))
 	}
 	return nil
 }

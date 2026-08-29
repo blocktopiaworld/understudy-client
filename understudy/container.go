@@ -55,7 +55,8 @@ const (
 // A sentinel because the alternative is worse than an error: a click with no
 // window open is addressed to the player's own inventory, which the server
 // accepts and applies somewhere unintended.
-var ErrNoContainer = errors.New("understudy: no container window is open")
+var ErrNoContainer = refuse(ReasonNoWindow, false,
+	errors.New("understudy: no container window is open"))
 
 // ErrNotConnected reports that something tried to put a packet on a wire that
 // is not there. Only reachable before Connect or after Close; it exists so
@@ -253,9 +254,9 @@ func (c *Client) awaitContainer(
 					"window", c.window.ID(), "within", containerOpenTimeout)
 				return nil
 			}
-			return fmt.Errorf(
+			return refuse(ReasonNoUI, false, fmt.Errorf(
 				"understudy: no container opened within %v%s",
-				containerOpenTimeout, why)
+				containerOpenTimeout, why))
 		case <-ticker.C:
 		}
 	}
@@ -563,10 +564,10 @@ func (c *Client) Trade(ctx context.Context, index int32) (ItemStack, error) {
 	// same symptom as a dozen other things.
 	offers := c.Trades()
 	if len(offers) == 0 {
-		return ItemStack{}, fmt.Errorf(
+		return ItemStack{}, refuse(ReasonNoOffers, false, fmt.Errorf(
 			"understudy: this %s has no trades to offer — an unemployed villager, or one "+
 				"given a profession without offers, never generates any",
-			c.ContainerType())
+			c.ContainerType()))
 	}
 	found := false
 	for _, offer := range offers {
@@ -575,17 +576,17 @@ func (c *Client) Trade(ctx context.Context, index int32) (ItemStack, error) {
 		}
 		found = true
 		if !offer.Available() {
-			return ItemStack{}, fmt.Errorf(
+			return ItemStack{}, refuse(ReasonLockedOut, true, fmt.Errorf(
 				"understudy: trade %d (%s) is locked out — %d of %d uses spent, so the "+
 					"villager must restock before it will trade again",
-				index, offer, offer.Uses, offer.MaxUses)
+				index, offer, offer.Uses, offer.MaxUses))
 		}
 		break
 	}
 	if !found {
-		return ItemStack{}, fmt.Errorf(
+		return ItemStack{}, refuse(ReasonNoSuchTrade, false, fmt.Errorf(
 			"understudy: no trade at index %d; this merchant offers %d (%v)",
-			index, len(offers), offers)
+			index, len(offers), offers))
 	}
 	before, _ := c.window.Slot(MerchantResultSlot)
 	if err := c.SelectTrade(index); err != nil {

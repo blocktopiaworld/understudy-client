@@ -100,9 +100,9 @@ func (c *Client) WalkTo(ctx context.Context, x, y, z float64) error {
 // below that rather than moving at a speed the server will not accept.
 func (c *Client) SprintTo(ctx context.Context, x, y, z float64) error {
 	if _, food := c.Health(); food <= sprintFloor {
-		return fmt.Errorf(
+		return refuse(ReasonTooHungry, true, fmt.Errorf(
 			"understudy: cannot sprint on %d food — vanilla needs more than %d, and moving at "+
-				"sprint speed without it just earns a correction", food, sprintFloor)
+				"sprint speed without it just earns a correction", food, sprintFloor))
 	}
 	if err := c.SetSprinting(true); err != nil {
 		return err
@@ -148,12 +148,12 @@ func (c *Client) moveAt(ctx context.Context, x, y, z, speed float64, sprinting b
 		if dist < best-walkProgressEpsilon {
 			best, stalled = dist, 0
 		} else if stalled++; stalled >= walkStallTicks {
-			return fmt.Errorf(
+			return refuse(ReasonBlocked, false, fmt.Errorf(
 				"understudy: %sing to %.1f,%.1f,%.1f made no progress for %v at "+
 					"%.1f,%.1f,%.1f, %.1f blocks short — something is in the way "+
 					"(this is dead reckoning, not pathfinding)",
 				verb, x, y, z, time.Duration(walkStallTicks)*TickRate,
-				pos.X, pos.Y, pos.Z, dist)
+				pos.X, pos.Y, pos.Z, dist))
 		}
 		scale := step / dist
 		if err := c.MoveTo(pos.X+dx*scale, pos.Y+dy*scale, pos.Z+dz*scale); err != nil {

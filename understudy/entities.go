@@ -48,7 +48,8 @@ func (c *Client) EntitiesOfType(typeName string) []Entity {
 // reach it" are different answers that callers act on differently — killing
 // the last of something is a success, being out of range is not. See
 // AttackTimes, which relies on telling them apart.
-var ErrNoSuchEntity = errors.New("understudy: no tracked entity")
+var ErrNoSuchEntity = refuse(ReasonNotTracked, true,
+	errors.New("understudy: no tracked entity"))
 
 // NearestEntity returns the closest entity of the given type. An empty
 // typeName matches any type. It returns an error wrapping ErrNoSuchEntity if

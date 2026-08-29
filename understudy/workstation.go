@@ -298,7 +298,8 @@ func (c *Client) requireWindow(want ...WindowType) error {
 		}
 		names += w.String()
 	}
-	return fmt.Errorf("understudy: this is a %s window, not a %s", got, names)
+	return refuse(ReasonWrongWindow, false,
+		fmt.Errorf("understudy: this is a %s window, not a %s", got, names))
 }
 
 // SetItemName sends the new name for the item in an open anvil.

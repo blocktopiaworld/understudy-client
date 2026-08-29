@@ -84,15 +84,18 @@ func (s sight) err(action string, x, y, z int32, hit RayHit) error {
 	case sightClear:
 		return nil
 	case sightEmpty:
-		return fmt.Errorf("understudy: cannot %s block at %d,%d,%d — nothing solid along the line of sight",
-			action, x, y, z)
+		return refuse(ReasonNotTargetable, true,
+			fmt.Errorf("understudy: cannot %s block at %d,%d,%d — nothing solid along the line of sight",
+				action, x, y, z))
 	case sightNoTarget:
-		return fmt.Errorf("understudy: cannot %s block at %d,%d,%d — there is nothing there "+
-			"as far as this client has been told; if it was just placed, the update may not "+
-			"have arrived yet", action, x, y, z)
+		return refuse(ReasonNotTargetable, true,
+			fmt.Errorf("understudy: cannot %s block at %d,%d,%d — there is nothing there "+
+				"as far as this client has been told; if it was just placed, the update may not "+
+				"have arrived yet", action, x, y, z))
 	default:
-		return fmt.Errorf("understudy: cannot %s block at %d,%d,%d — %d,%d,%d is in the way (%.2f blocks along)",
-			action, x, y, z, hit.X, hit.Y, hit.Z, hit.Distance)
+		return refuse(ReasonOccluded, false,
+			fmt.Errorf("understudy: cannot %s block at %d,%d,%d — %d,%d,%d is in the way (%.2f blocks along)",
+				action, x, y, z, hit.X, hit.Y, hit.Z, hit.Distance))
 	}
 }
 

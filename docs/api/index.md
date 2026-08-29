@@ -72,6 +72,30 @@ harness needs to tell them apart.
 Both carry `{"error": "..."}`. A `409` also carries whatever the verb managed
 before it failed, so a partial dig still tells you how many blocks broke.
 
+### Which kind of "no"
+
+A `409` covers two situations that need opposite handling. A swing sent before
+the spawn packet arrived clears on its own; an item the player does not hold
+never will. So a `409` also carries a machine-readable pair:
+
+```json
+{
+  "error": "understudy: no \"minecraft:elytra\" in inventory (0 slots known)",
+  "reason": "no_such_item",
+  "retryable": false
+}
+```
+
+`reason` is a short stable code and `retryable` is whether the same call,
+unchanged, could succeed later. A caller waiting on an action can stop the
+moment it sees `false`, instead of retrying until its own timeout on something
+that was never going to become true.
+
+**Both are absent when the client has not classified the refusal.** That is
+deliberate: a guess would be worse than a silence, because a wrong `retryable:
+false` turns a passing test into a flaky failure. Treat an absent pair the way
+you treated every refusal before these existed.
+
 Unknown JSON fields are rejected rather than ignored, so a typo in a field name
 is a `400` and not a silently skipped argument.
 

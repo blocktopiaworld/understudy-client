@@ -84,12 +84,15 @@ func (c *Client) HoldItem(name string) (ItemStack, error) {
 	item, ok := c.FindItem(name)
 	if !ok {
 		if c.InventoryTruncated() {
-			return ItemStack{}, fmt.Errorf(
+			// Retryable, because the view being short is why it was not found:
+			// the item may well be there in a slot that did not decode.
+			return ItemStack{}, refuse(ReasonNoSuchItem, true, fmt.Errorf(
 				"understudy: %q not found, and the inventory view is incomplete "+
-					"(an item with data components stopped the scan)", name)
+					"(an item with data components stopped the scan)", name))
 		}
-		return ItemStack{}, fmt.Errorf("understudy: no %q in inventory (%d slots known)",
-			name, len(c.Inventory()))
+		return ItemStack{}, refuse(ReasonNoSuchItem, false,
+			fmt.Errorf("understudy: no %q in inventory (%d slots known)",
+				name, len(c.Inventory())))
 	}
 
 	if item.Slot >= SlotHotbarStart && item.Slot <= SlotHotbarEnd {

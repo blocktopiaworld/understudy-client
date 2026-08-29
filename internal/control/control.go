@@ -21,6 +21,8 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/blocktopiaworld/understudy-client/understudy"
 )
 
 // Timeouts for the control listener. The read-header timeout is what protects
@@ -132,6 +134,17 @@ func (s *Server) badRequest(w http.ResponseWriter, err error) {
 func (s *Server) failed(w http.ResponseWriter, err error, extra body) {
 	s.log.Warn("control action failed", "err", err)
 	out := body{"error": err.Error()}
+	// What kind of "no" this is, when the client knows. A caller waiting on an
+	// action can stop the moment it hears a permanent one, instead of retrying
+	// until its own timeout on something that was never going to become true.
+	//
+	// Absent when the client has not classified the refusal, which a caller
+	// should read as "unknown" and handle the way it did before these existed.
+	// Saying nothing is what makes the answer worth trusting where it is given.
+	if refusal, ok := understudy.AsRefusal(err); ok {
+		out["reason"] = string(refusal.Reason)
+		out["retryable"] = refusal.Retryable
+	}
 	for k, v := range extra {
 		out[k] = v
 	}

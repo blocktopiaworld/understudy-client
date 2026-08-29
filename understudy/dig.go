@@ -223,8 +223,10 @@ func (c *Client) awaitBreak(ctx context.Context, x, y, z, face int32, hold time.
 			finished = true
 		}
 		if now.After(deadline) {
-			return fmt.Errorf("understudy: failed to break block at %d,%d,%d — still solid after %v "+
-				"(wrong tool, or the server rejected the break)", x, y, z, now.Sub(start).Round(time.Millisecond))
+			return refuse(ReasonUnchanged, false,
+				fmt.Errorf("understudy: failed to break block at %d,%d,%d — still solid after %v "+
+					"(wrong tool, or the server rejected the break)",
+					x, y, z, now.Sub(start).Round(time.Millisecond)))
 		}
 		if err := wait(ctx, digPollInterval); err != nil {
 			return err
@@ -258,9 +260,10 @@ func (c *Client) confirmBlockBecame(ctx context.Context, x, y, z int32, wantSoli
 			if wantSolid {
 				verb, state = "place", "still empty"
 			}
-			return fmt.Errorf("understudy: failed to %s block at %d,%d,%d — %s after %v "+
-				"(out of reach, wrong tool, or the space was occupied)",
-				verb, x, y, z, state, blockChangeTimeout)
+			return refuse(ReasonUnchanged, false,
+				fmt.Errorf("understudy: failed to %s block at %d,%d,%d — %s after %v "+
+					"(out of reach, wrong tool, or the space was occupied)",
+					verb, x, y, z, state, blockChangeTimeout))
 		}
 		if err := wait(ctx, digPollInterval); err != nil {
 			return err

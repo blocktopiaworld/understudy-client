@@ -4,7 +4,21 @@ Notable changes. Dates are when the work landed, not when a tag was cut.
 
 ## Unreleased
 
-Nothing yet.
+### Added
+
+- A refusal says which kind of "no" it is. `409` now carries `reason`, a short
+  stable code, and `retryable`, whether the same call unchanged could succeed
+  later. A swing sent before the spawn packet arrived clears on its own; an item
+  the player does not hold never will, and both used to arrive as the same shape
+  with a different sentence — so a caller either retried everything until its
+  timeout or matched on prose.
+
+  Both fields are absent where the client has not classified the refusal, which
+  a caller should read as "unknown" and handle as before. A guess would be worse
+  than a silence: a wrong `retryable: false` turns a passing test into a flaky
+  failure. Nineteen refusal sites are classified; the rest say nothing.
+
+  Asked for as C-3 in `docs/understudy-client-requests.md`.
 
 ## v0.2.0 — 2026-08-29
 
