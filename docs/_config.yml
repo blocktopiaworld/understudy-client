@@ -22,6 +22,10 @@ relative_links:
   enabled: true
   collections: true
 
+# Directory URLs rather than .html, which is the convention for a docs site and
+# survives restructuring better. jekyll-relative-links follows it.
+permalink: pretty
+
 # Not part of the site.
 exclude:
   - go-style.md
