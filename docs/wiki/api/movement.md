@@ -191,7 +191,14 @@ returns on arrival.
 }
 ```
 
-Four blocks takes about 900 ms, which is walking speed and not overhead.
+Four blocks takes about 900 ms, which is walking speed and not overhead: a
+player walks 4.317 blocks per second, so four blocks is 927 ms of arithmetic.
+
+`sprint: true` holds the sprint input for the journey and moves at 5.612
+blocks/s, vanilla's walking speed times 1.3 — measured at 5.63 against 4.35 for
+the same twenty blocks. Sprinting needs more than six food and costs hunger;
+below that it is refused, because moving at sprint speed without the server
+agreeing you are sprinting earns a position correction rather than an error.
 
 **This is dead reckoning, not pathfinding.** It knows nothing about walls,
 drops or water. Walking into something solid is refused after a second of

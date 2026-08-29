@@ -338,8 +338,25 @@ func (s *Server) move(_ context.Context, in pointRequest) (body, error) {
 	return nil, s.bot.MoveTo(in.X, in.Y, in.Z)
 }
 
-func (s *Server) walk(ctx context.Context, in pointRequest) (body, error) {
-	return nil, s.bot.WalkTo(ctx, in.X, in.Y, in.Z)
+// walk goes at walking speed, or sprinting speed with {"sprint": true}.
+//
+// A flag rather than a /sprint endpoint: it is the same journey to the same
+// place, and a caller that wants to compare the two should not have to change
+// which URL it posts to.
+func (s *Server) walk(ctx context.Context, in struct {
+	X, Y, Z float64
+	Sprint  bool `json:"sprint"`
+}) (body, error) {
+	if in.Sprint {
+		if err := s.bot.SprintTo(ctx, in.X, in.Y, in.Z); err != nil {
+			return nil, err
+		}
+		return body{"sprinted": true, "speed": understudy.SprintSpeed}, nil
+	}
+	if err := s.bot.WalkTo(ctx, in.X, in.Y, in.Z); err != nil {
+		return nil, err
+	}
+	return body{"sprinted": false, "speed": understudy.WalkSpeed}, nil
 }
 
 // fall drops the bot to a known floor height, taking real fall damage.

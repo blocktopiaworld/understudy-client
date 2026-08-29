@@ -52,6 +52,7 @@ type Bot interface {
 	// moving
 	MoveTo(x, y, z float64) error
 	WalkTo(ctx context.Context, x, y, z float64) error
+	SprintTo(ctx context.Context, x, y, z float64) error
 	Fall(ctx context.Context) (float64, error)
 	FallTo(ctx context.Context, groundY float64) (float64, error)
 	Sneak(ctx context.Context, d time.Duration) error

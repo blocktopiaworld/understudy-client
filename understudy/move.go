@@ -19,6 +19,16 @@ const TickRate = 50 * time.Millisecond
 // WalkSpeed is a player's normal walking speed in blocks per second.
 const WalkSpeed = 4.317
 
+// SprintSpeed is a player's sprinting speed, which vanilla derives as walking
+// times 1.3.
+const SprintSpeed = WalkSpeed * 1.3
+
+// sprintFloor is the food level sprinting needs. Vanilla refuses below it, and
+// a bot that moved at sprint speed anyway would be telling the server it had
+// travelled further than walking allows — which arrives back as a correction,
+// not as an error, and looks like the walk simply not working.
+const sprintFloor = 6
+
 // movementFlags builds the trailing flags byte. onGround matters: a bot that
 // always claims to be airborne is a bot the server may treat as flying.
 func movementFlags(onGround bool) uint8 {
@@ -79,10 +89,43 @@ func (c *Client) writePosition(x, y, z float64, onGround bool) error {
 // Callers typically position a bot in terrain they control, so the movement
 // that has to look believable is short and local.
 func (c *Client) WalkTo(ctx context.Context, x, y, z float64) error {
-	if err := c.requireAlive("walk"); err != nil {
+	return c.moveAt(ctx, x, y, z, WalkSpeed, false)
+}
+
+// SprintTo is WalkTo at sprinting speed, with the sprint input held for the
+// journey so the server sees a sprinting player rather than a walking one
+// covering ground too fast.
+//
+// Sprinting costs hunger and needs food above six to start, so this refuses
+// below that rather than moving at a speed the server will not accept.
+func (c *Client) SprintTo(ctx context.Context, x, y, z float64) error {
+	if _, food := c.Health(); food <= sprintFloor {
+		return fmt.Errorf(
+			"understudy: cannot sprint on %d food — vanilla needs more than %d, and moving at "+
+				"sprint speed without it just earns a correction", food, sprintFloor)
+	}
+	if err := c.SetSprinting(true); err != nil {
 		return err
 	}
-	step := WalkSpeed * TickRate.Seconds()
+	// Unconditional: a cancelled context must still stop the sprint, or the bot
+	// keeps the input held for the rest of the session.
+	defer func() {
+		if err := c.SetSprinting(false); err != nil {
+			c.log.Debug("could not stop sprinting", "err", err)
+		}
+	}()
+	return c.moveAt(ctx, x, y, z, SprintSpeed, true)
+}
+
+func (c *Client) moveAt(ctx context.Context, x, y, z, speed float64, sprinting bool) error {
+	verb := "walk"
+	if sprinting {
+		verb = "sprint"
+	}
+	if err := c.requireAlive(verb); err != nil {
+		return err
+	}
+	step := speed * TickRate.Seconds()
 	ticker := time.NewTicker(TickRate)
 	defer ticker.Stop()
 
@@ -106,10 +149,10 @@ func (c *Client) WalkTo(ctx context.Context, x, y, z float64) error {
 			best, stalled = dist, 0
 		} else if stalled++; stalled >= walkStallTicks {
 			return fmt.Errorf(
-				"understudy: walking to %.1f,%.1f,%.1f made no progress for %v at "+
+				"understudy: %sing to %.1f,%.1f,%.1f made no progress for %v at "+
 					"%.1f,%.1f,%.1f, %.1f blocks short — something is in the way "+
 					"(this is dead reckoning, not pathfinding)",
-				x, y, z, time.Duration(walkStallTicks)*TickRate,
+				verb, x, y, z, time.Duration(walkStallTicks)*TickRate,
 				pos.X, pos.Y, pos.Z, dist)
 		}
 		scale := step / dist

@@ -159,6 +159,11 @@ func (b *stubBot) LookingAt() (understudy.RayHit, bool) { return b.hit, b.hitOK 
 // --- moving ---
 
 func (b *stubBot) MoveTo(x, y, z float64) error { b.record("MoveTo"); return b.err }
+func (b *stubBot) SprintTo(ctx context.Context, x, y, z float64) error {
+	b.record("SprintTo")
+	return b.err
+}
+
 func (b *stubBot) WalkTo(ctx context.Context, x, y, z float64) error {
 	b.record("WalkTo")
 	return b.err

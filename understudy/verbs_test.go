@@ -746,3 +746,54 @@ func TestWalkToGivesUpWhenItStopsMakingProgress(t *testing.T) {
 		t.Errorf("WalkTo error = %q, want it to name the lack of progress", err)
 	}
 }
+
+// Sprinting is walking times 1.3, with the sprint input held so the server sees
+// a sprinting player rather than a walking one covering ground too fast.
+func TestSprintingIsFasterAndHoldsTheInput(t *testing.T) {
+	c, _ := settled(t)
+	c.opts.DisableIdlePosition = true
+	setPosition(c, 0, 64, 0)
+	setFood(c, 20)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	began := time.Now()
+	if err := c.SprintTo(ctx, 12, 64, 0); err != nil {
+		t.Fatalf("SprintTo: %v", err)
+	}
+	sprinted := time.Since(began)
+
+	setPosition(c, 0, 64, 0)
+	began = time.Now()
+	if err := c.WalkTo(ctx, 12, 64, 0); err != nil {
+		t.Fatalf("WalkTo: %v", err)
+	}
+	walked := time.Since(began)
+
+	if sprinted >= walked {
+		t.Errorf("sprinting took %v and walking %v; sprinting should be quicker", sprinted, walked)
+	}
+	// The input has to be released, or the bot stays sprinting for the session.
+	if c.Input()&protocol.InputSprint != 0 {
+		t.Error("the sprint input was left held after arriving")
+	}
+}
+
+// Vanilla refuses to sprint below seven food, and a bot that moved at sprint
+// speed anyway would be telling the server it had travelled further than
+// walking allows — which comes back as a correction, not an error, and reads as
+// the walk simply not working.
+func TestSprintingIsRefusedWhenTooHungry(t *testing.T) {
+	c, _ := settled(t)
+	setPosition(c, 0, 64, 0)
+	setFood(c, 6)
+
+	err := c.SprintTo(context.Background(), 5, 64, 0)
+	if err == nil {
+		t.Fatal("SprintTo on six food = nil, want a refusal")
+	}
+	if !strings.Contains(err.Error(), "food") {
+		t.Errorf("error = %q, want it to name the hunger", err)
+	}
+}

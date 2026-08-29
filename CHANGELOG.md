@@ -4,6 +4,16 @@ Notable changes. Dates are when the work landed, not when a tag was cut.
 
 ## Unreleased
 
+### Added
+
+- `POST /walk` takes `sprint: true`, and the library gains `SprintTo`. Sprinting
+  holds the sprint input for the journey and moves at 5.612 blocks/s, vanilla's
+  walking speed times 1.3 — measured at 5.63 against 4.35 walking over the same
+  twenty blocks. It is refused below seven food, which is where vanilla refuses
+  it, because moving at sprint speed without the server agreeing earns a
+  correction rather than an error. A flag rather than a new endpoint: it is the
+  same journey to the same place.
+
 ### Fixed
 
 - Mining ignored the pause a vanilla client takes between blocks. A break that

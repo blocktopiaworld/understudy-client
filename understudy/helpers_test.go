@@ -208,3 +208,11 @@ func identityComponentIDs() map[int32]int32 {
 	}
 	return ids
 }
+
+// setFood sets the food level the way the server would, for tests about verbs
+// that vanilla gates on hunger.
+func setFood(c *Client, food int32) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.food = food
+}
