@@ -4,6 +4,30 @@ Notable changes. Dates are when the work landed, not when a tag was cut.
 
 ## Unreleased
 
+Nothing yet.
+
+## v0.2.0 — 2026-08-29
+
+The API is described now, and described strictly enough to hold someone to.
+
+### Documentation
+
+- An OpenAPI 3.1 document at `docs/openapi.yaml`, rendered at
+  [/reference/](https://blocktopiaworld.github.io/understudy-client/reference/),
+  generated from the control server's own route table by
+  `internal/gen/genopenapi`. Paths, methods, request fields and their types come
+  from the handlers themselves, so what it says the server accepts is what the
+  server accepts. CI regenerates and diffs it.
+- It is a contract rather than a description: `required` where a handler refuses
+  without a field, the bounds and closed sets the handlers already enforce, and
+  `additionalProperties: false` because the server decodes with
+  `DisallowUnknownFields` and a mistyped field name is already a `400`. Verbs
+  taking one form or another declare the alternatives. Checked both ways against
+  a running server — 52 captured requests satisfy the schema, and 9 requests it
+  forbids are all refused.
+- The guide is a site rather than a folder of markdown, at
+  [blocktopiaworld.github.io/understudy-client](https://blocktopiaworld.github.io/understudy-client/).
+
 ### Added
 
 - A `go install`ed binary reports the version it was installed at. The linker
@@ -27,6 +51,10 @@ Notable changes. Dates are when the work landed, not when a tag was cut.
   mining cadence stays inside what a player could produce. Measured on Paper
   26.2: an instant-break run is unchanged at 43 ms a block, and a held break
   now carries the extra 250 ms.
+- Coordinate fields carry an explicit `json` tag. They had none, so the schema
+  named them `X`, `Y` and `Z` while callers sent lowercase. `encoding/json`
+  matches case-insensitively so both always worked, but a schema can only name
+  one spelling, and it should be the one people use.
 
 ## v0.1.0 — 2026-08-29
 
