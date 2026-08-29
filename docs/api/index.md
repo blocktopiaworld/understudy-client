@@ -1,4 +1,8 @@
-# HTTP control API
+---
+title: HTTP control API
+has_children: true
+nav_order: 2
+---
 
 Start the bot with `-control` and it serves a JSON API, so a test suite in any
 language can drive it.
@@ -21,7 +25,7 @@ There is **no authentication**. Bind it to loopback.
 | [Containers](containers.md) | `GET /container` `/trades`, `POST /container/*` |
 | [Workstations](workstations.md) | `/smelt` `/anvil` `/rename` `/loom` `/grindstone` `/smith` `/enchant` `/brew` `/cartography` `/beacon` |
 
-Runnable versions of most of this are in [examples/](../../../examples/).
+Runnable versions of most of this are in [examples/](../../examples/).
 
 Every request and response block in these pages was captured from a live
 Minecraft 26.2 server, not written by hand. If a sample looks odd, it is

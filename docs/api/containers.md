@@ -1,4 +1,8 @@
-# Containers
+---
+title: Containers
+parent: HTTP control API
+nav_order: 6
+---
 
 Every window is laid out as `[the container's own slots][the player's 36]`, so
 `own_slots == size - 36`. That one rule covers a single chest (27), a double

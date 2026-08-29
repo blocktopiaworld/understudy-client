@@ -1,4 +1,8 @@
-# Aiming and moving
+---
+title: Aiming and moving
+parent: HTTP control API
+nav_order: 2
+---
 
 Every response below was captured from a live 26.2 server.
 

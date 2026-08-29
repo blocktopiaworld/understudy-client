@@ -1,4 +1,8 @@
-# Blocks
+---
+title: Blocks
+parent: HTTP control API
+nav_order: 3
+---
 
 Every response below was captured from a live 26.2 server.
 

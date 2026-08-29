@@ -1,4 +1,8 @@
-# Items
+---
+title: Items
+parent: HTTP control API
+nav_order: 4
+---
 
 Item names may be bare (`bread`) or namespaced (`minecraft:bread`).
 

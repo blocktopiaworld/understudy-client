@@ -52,3 +52,20 @@ prefix, landing on the final byte is the only evidence a reading is right.
 
 `docs/go-style.md` is the long version. The short version: comments say why,
 not what, and an error message should tell the reader what to do next.
+
+## The documentation site
+
+`docs/` is a Jekyll site that GitHub Pages builds. There is no local toolchain
+and nothing to install: the theme is fetched by `remote_theme`, and the plugins
+in `docs/_config.yml` are ones Pages already runs.
+
+Adding a page means adding a markdown file with front matter — `title`, and
+`parent` plus `nav_order` if it belongs under an existing section. Cross-links
+stay as ordinary relative links to the `.md` file: `jekyll-relative-links`
+rewrites them to the built URL, so the same link works on the site and when
+reading the file on GitHub. Writing site URLs by hand breaks the second one.
+
+**Turning it on is a one-time setting**, and it needs the repository to be
+public — GitHub Pages is not available for private repositories on the free
+plan. Settings → Pages → Source: *Deploy from a branch*, branch `main`, folder
+`/docs`. No workflow, no CI minutes.

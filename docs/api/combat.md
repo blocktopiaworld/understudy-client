@@ -1,4 +1,8 @@
-# Combat
+---
+title: Combat
+parent: HTTP control API
+nav_order: 5
+---
 
 Every response below was captured from a live 26.2 server.
 

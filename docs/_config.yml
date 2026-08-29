@@ -1,0 +1,52 @@
+# GitHub Pages builds this directory. There is no local toolchain and nothing
+# to install: the theme is fetched by remote_theme, and the plugins below are
+# the ones GitHub Pages already runs.
+#
+# jekyll-relative-links is the one that matters. It rewrites links like
+# `reading.md` to the page's built URL, which means every cross-link in these
+# files works both on the site and when reading the same file on GitHub. Without
+# it you have to choose which of the two to break.
+
+title: understudy-client
+description: >-
+  A headless Minecraft client, in Go, that speaks the Java Edition wire protocol
+  directly. Built for automated in-game testing.
+
+remote_theme: just-the-docs/just-the-docs
+
+plugins:
+  - jekyll-relative-links
+  - jekyll-seo-tag
+
+relative_links:
+  enabled: true
+  collections: true
+
+# Not part of the site.
+exclude:
+  - go-style.md
+
+# ── theme ────────────────────────────────────────────────────────────────────
+color_scheme: light
+search_enabled: true
+search:
+  heading_level: 3
+  previews: 2
+
+heading_anchors: true
+
+aux_links:
+  "GitHub": https://github.com/blocktopiaworld/understudy-client
+aux_links_new_tab: true
+
+back_to_top: true
+back_to_top_text: "Back to top"
+
+footer_content: >-
+  understudy-client — Apache-2.0. Minecraft is a trademark of Mojang Synergies
+  AB; this project is not affiliated with, endorsed by, or connected to Mojang
+  or Microsoft.
+
+nav_external_links:
+  - title: Releases
+    url: https://github.com/blocktopiaworld/understudy-client/releases

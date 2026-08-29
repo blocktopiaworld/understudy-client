@@ -1,4 +1,7 @@
-# Adding a version
+---
+title: Adding a version
+nav_order: 3
+---
 
 Three things move between versions, and only the first is in minecraft-data.
 

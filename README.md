@@ -86,7 +86,10 @@ Reading, movement, digging, placing, combat, containers and workstations are
 all covered — 53 endpoints, each documented with its parameters and a request
 and response captured from a live server.
 
-**[Full API reference →](docs/wiki/api/)**  ·  **[Runnable examples →](examples/)**
+**[Full API reference →](docs/api/)**  ·  **[Runnable examples →](examples/)**
+
+The same reference reads better as a site once Pages is on:
+`https://blocktopiaworld.github.io/understudy-client/`.
 
 There is no authentication. Bind it to loopback.
 
@@ -169,7 +172,7 @@ make check     # fmt, vet, lint, and the tests under -race
 
 Tests are hermetic: sessions run against a `net.Pipe` fake server, so the suite
 needs no Minecraft server and no network. See [CONTRIBUTING.md](CONTRIBUTING.md),
-and [Adding a version](docs/wiki/Adding-a-Version.md) for the generator runs a
+and [Adding a version](docs/adding-a-version.md) for the generator runs a
 new Minecraft release needs.
 
 ## How this is built

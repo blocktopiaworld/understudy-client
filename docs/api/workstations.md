@@ -1,4 +1,8 @@
-# Workstations
+---
+title: Workstations
+parent: HTTP control API
+nav_order: 7
+---
 
 These place the inputs, press whatever needs pressing, wait for the result and
 take it.

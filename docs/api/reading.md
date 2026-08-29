@@ -1,4 +1,8 @@
-# Reading the world
+---
+title: Reading the world
+parent: HTTP control API
+nav_order: 1
+---
 
 All `GET`. These answer from the client's own state and never wait on the
 server, so they cost about 0.35 ms and are safe to poll.
