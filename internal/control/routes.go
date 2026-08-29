@@ -275,7 +275,11 @@ func (s *Server) handleEntities(w http.ResponseWriter, r *http.Request) {
 
 // --- actions -----------------------------------------------------------------
 
-type blockRef struct{ X, Y, Z int32 }
+type blockRef struct {
+	X int32 `json:"x"`
+	Y int32 `json:"y"`
+	Z int32 `json:"z"`
+}
 
 // lookRequest is the one place aiming is controlled, and it accepts every form
 // a caller might reasonably have to hand — mirroring Carpet's
@@ -289,9 +293,9 @@ type blockRef struct{ X, Y, Z int32 }
 //	{"entity_type":"chicken"}          the nearest entity of a type
 //	{"player":"Someone"}               a named player, aimed at eye height
 type lookRequest struct {
-	Direction  string    `json:"direction"`
+	Direction  string    `json:"direction" openapi:"enum=north|south|east|west|up|down"`
 	Yaw        *float32  `json:"yaw"`
-	Pitch      *float32  `json:"pitch"`
+	Pitch      *float32  `json:"pitch" openapi:"min=-90,max=90"`
 	X          *float64  `json:"x"`
 	Y          *float64  `json:"y"`
 	Z          *float64  `json:"z"`
@@ -328,7 +332,11 @@ func (s *Server) look(_ context.Context, in lookRequest) (body, error) {
 		strings.Join(understudy.DirectionNames(), ", "))
 }
 
-type pointRequest struct{ X, Y, Z float64 }
+type pointRequest struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+	Z float64 `json:"z"`
+}
 
 func (s *Server) lookAt(_ context.Context, in pointRequest) (body, error) {
 	return nil, s.bot.LookAt(in.X, in.Y, in.Z)
@@ -344,8 +352,10 @@ func (s *Server) move(_ context.Context, in pointRequest) (body, error) {
 // place, and a caller that wants to compare the two should not have to change
 // which URL it posts to.
 func (s *Server) walk(ctx context.Context, in struct {
-	X, Y, Z float64
-	Sprint  bool `json:"sprint"`
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Z      float64 `json:"z"`
+	Sprint bool    `json:"sprint"`
 }) (body, error) {
 	if in.Sprint {
 		if err := s.bot.SprintTo(ctx, in.X, in.Y, in.Z); err != nil {
@@ -408,14 +418,14 @@ func (s *Server) fall(ctx context.Context, in struct {
 }
 
 func (s *Server) slot(_ context.Context, in struct {
-	Slot int `json:"slot"`
+	Slot int `json:"slot" openapi:"required,min=0,max=8"`
 }) (body, error) {
 	return nil, s.bot.SetHeldSlot(in.Slot)
 }
 
 // hold puts a named item into the bot's hand, from anywhere in the inventory.
 func (s *Server) hold(_ context.Context, in struct {
-	Item string `json:"item"`
+	Item string `json:"item" openapi:"required"`
 }) (body, error) {
 	if in.Item == "" {
 		return nil, invalidf("hold: item is required")
@@ -456,13 +466,13 @@ func (s *Server) drop(ctx context.Context, in struct {
 // sneak holds sneak for a duration, since sneak_time only accrues while
 // actually sneaking.
 func (s *Server) sneak(ctx context.Context, in struct {
-	MS int `json:"ms"`
+	MS int `json:"ms" openapi:"min=0"`
 }) (body, error) {
 	return nil, s.bot.Sneak(ctx, millis(orDefault(in.MS, defaultSneakMS), 0))
 }
 
 func (s *Server) equip(_ context.Context, in struct {
-	Item string `json:"item"`
+	Item string `json:"item" openapi:"required"`
 }) (body, error) {
 	if in.Item == "" {
 		return nil, invalidf("equip: item is required")
@@ -474,6 +484,8 @@ func (s *Server) equip(_ context.Context, in struct {
 	return body{"item": item.Name, "from_slot": item.Slot}, nil
 }
 
+// openapi:anyOf entity_id
+// openapi:anyOf type
 // interact right-clicks an entity — taming, breeding, trading.
 func (s *Server) interact(_ context.Context, in struct {
 	Type     string `json:"type"`
@@ -517,6 +529,9 @@ func (s *Server) consume(ctx context.Context, in struct {
 	}, nil
 }
 
+// openapi:anyOf block
+// openapi:anyOf x, y, z
+// openapi:anyOf type
 // shoot draws a bow and looses an arrow at a target:
 //
 //	{"block":{"x":..,"y":..,"z":..}}   shoot a block, aimed at its centre
@@ -527,10 +542,12 @@ func (s *Server) consume(ctx context.Context, in struct {
 // Draw time is the power control: the curve is (t²+2t)/3, so half a second
 // gives roughly 40% power, not 50%.
 func (s *Server) shoot(ctx context.Context, in struct {
-	X, Y, Z *float64
-	Block   *blockRef `json:"block"`
-	Type    string    `json:"type"`
-	DrawMS  int       `json:"draw_ms"`
+	X      *float64  `json:"x"`
+	Y      *float64  `json:"y"`
+	Z      *float64  `json:"z"`
+	Block  *blockRef `json:"block"`
+	Type   string    `json:"type"`
+	DrawMS int       `json:"draw_ms" openapi:"min=0"`
 	// The bow to draw. Optional, and held first when given.
 	Item string `json:"item"`
 }) (body, error) {
@@ -590,7 +607,7 @@ func (s *Server) use(ctx context.Context, _ struct{}) (body, error) {
 
 // digLookingAt mines whatever the crosshair is on.
 func (s *Server) digLookingAt(ctx context.Context, in struct {
-	HoldMS int `json:"hold_ms"`
+	HoldMS int `json:"hold_ms" openapi:"min=0"`
 }) (body, error) {
 	hit, err := s.bot.DigLookingAt(ctx, millis(in.HoldMS, defaultDigHold))
 	if err != nil {
@@ -602,13 +619,15 @@ func (s *Server) digLookingAt(ctx context.Context, in struct {
 	}, nil
 }
 
+// openapi:anyOf entity_id
+// openapi:anyOf type
 // attack hits either an explicit entity ID or the nearest entity of a type.
 // Targeting by type is the useful form: entity IDs are assigned by the server
 // and a caller has no way to predict one.
 func (s *Server) attack(ctx context.Context, in struct {
 	EntityID int32  `json:"entity_id"`
 	Type     string `json:"type"`
-	Times    int    `json:"times"`
+	Times    int    `json:"times" openapi:"min=1"`
 }) (body, error) {
 	times := orDefault(in.Times, defaultAttempts)
 
@@ -642,11 +661,15 @@ func (s *Server) attack(ctx context.Context, in struct {
 	}, nil
 }
 
+// openapi:anyOf x, y, z
+// openapi:anyOf blocks
 func (s *Server) dig(ctx context.Context, in struct {
-	X, Y, Z int32
-	Blocks  []blockRef `json:"blocks"`
-	Face    *int32     `json:"face"`
-	HoldMS  int        `json:"hold_ms"`
+	X      int32      `json:"x"`
+	Y      int32      `json:"y"`
+	Z      int32      `json:"z"`
+	Blocks []blockRef `json:"blocks"`
+	Face   *int32     `json:"face"`
+	HoldMS int        `json:"hold_ms" openapi:"min=0"`
 }) (body, error) {
 	face, err := blockFace(in.Face)
 	if err != nil {
@@ -678,8 +701,10 @@ func (s *Server) dig(ctx context.Context, in struct {
 }
 
 func (s *Server) place(ctx context.Context, in struct {
-	X, Y, Z int32
-	Face    *int32 `json:"face"`
+	X    int32  `json:"x"`
+	Y    int32  `json:"y"`
+	Z    int32  `json:"z"`
+	Face *int32 `json:"face" openapi:"min=0,max=5"`
 	// Opt-in: confirm a block actually appeared, and re-send if it didn't.
 	// Off by default because /place doubles as "right-click this block" for
 	// opening UIs and using items, where nothing is expected to appear and
@@ -805,9 +830,11 @@ func (s *Server) handleContainer(w http.ResponseWriter, _ *http.Request) {
 // has to be distinguishable from "at the origin".
 type station struct {
 	// The block to work at. Give all three or none.
-	X, Y, Z *int32
+	X *int32 `json:"x"`
+	Y *int32 `json:"y"`
+	Z *int32 `json:"z"`
 	// Which face of it to click, 0-5. Defaults to the one facing the bot.
-	Face *int32 `json:"face"`
+	Face *int32 `json:"face" openapi:"min=0,max=5"`
 
 	// A merchant to open instead of a block: the nearest entity of this type.
 	At string `json:"at"`
@@ -852,9 +879,11 @@ func (s *Server) open(ctx context.Context, w station) error {
 }
 
 func (s *Server) containerOpen(ctx context.Context, in struct {
-	X, Y, Z int32
-	Face    *int32 `json:"face"`
-	Type    string `json:"type"`
+	X    int32  `json:"x"`
+	Y    int32  `json:"y"`
+	Z    int32  `json:"z"`
+	Face *int32 `json:"face" openapi:"min=0,max=5"`
+	Type string `json:"type"`
 }) (body, error) {
 	if in.Type != "" {
 		target, err := s.bot.OpenContainerOnNearest(ctx, in.Type)
@@ -887,8 +916,8 @@ func (s *Server) containerClose(_ context.Context, _ struct{}) (body, error) {
 func (s *Server) containerClick(ctx context.Context, in struct {
 	station
 	Slot   int   `json:"slot"`
-	Button int8  `json:"button"`
-	Mode   int32 `json:"mode"`
+	Button int8  `json:"button" openapi:"min=0,max=1"`
+	Mode   int32 `json:"mode" openapi:"min=0,max=6"`
 }) (body, error) {
 	if err := s.open(ctx, in.station); err != nil {
 		return nil, err
@@ -944,11 +973,13 @@ func (s *Server) containerCraft(ctx context.Context, in struct {
 	return nil, s.bot.CraftRecipe(in.Recipe, in.All)
 }
 
+// openapi:anyOf item
+// openapi:anyOf index
 func (s *Server) containerTrade(ctx context.Context, in struct {
 	station
 	Index int32  `json:"index"`
 	Item  string `json:"item"`
-	Times int    `json:"times"`
+	Times int    `json:"times" openapi:"min=1"`
 	// Raw skips the confirmation, for a caller that wants to select a trade
 	// and inspect the window itself.
 	Raw bool `json:"raw"`
@@ -1004,8 +1035,8 @@ func (s *Server) containerTrade(ctx context.Context, in struct {
 // a layout is readable, a numeric recipe id is not.
 func (s *Server) containerGrid(ctx context.Context, in struct {
 	station
-	Layout map[string]string `json:"layout"`
-	Repeat int               `json:"repeat"`
+	Layout map[string]string `json:"layout" openapi:"required"`
+	Repeat int               `json:"repeat" openapi:"min=1"`
 }) (body, error) {
 	if err := s.open(ctx, in.station); err != nil {
 		return nil, err
@@ -1242,6 +1273,8 @@ func (s *Server) brew(ctx context.Context, in struct {
 	return nil, s.bot.Brew(ctx, in.Bottle, in.Ingredient, in.Fuel, in.Count)
 }
 
+// openapi:anyOf entity_id
+// openapi:anyOf type
 // interactAt right-clicks a specific point on an entity. Where you click
 // matters for multi-part entities — a chest boat's chest and seat are separate
 // hitboxes, and only one of them opens the chest.

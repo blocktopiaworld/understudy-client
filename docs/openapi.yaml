@@ -17,6 +17,10 @@ info:
 
     There is **no authentication**. Bind it to loopback.
 
+    Field names here are the canonical spelling. The server matches them
+    case-insensitively, so `x` and `X` both work — but this document names
+    one of the two, and a client that follows it is always accepted.
+
     Every endpoint reports what actually happened rather than what was asked
     for. The server accepts and silently ignores a great deal — a click on a
     stale window, a trade with a villager that has run out, a block placed
@@ -73,18 +77,19 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
-                X:
+                x:
                   type: integer
                   description: The block to work at. Give all three or none.
-                Y:
+                y:
                   type: integer
-                  description: The block to work at. Give all three or none.
-                Z:
+                z:
                   type: integer
-                  description: The block to work at. Give all three or none.
                 face:
                   type: integer
+                  minimum: 0
+                  maximum: 5
                   description: Which face of it to click, 0-5. Defaults to the one facing the bot.
                 at:
                   type: string
@@ -122,11 +127,15 @@ paths:
       tags: [Combat]
       summary: "Hits either an explicit entity ID or the nearest entity of a type. Targeting by type is the useful form: entity IDs are assigned by the server and a caller has no way to predict one."
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
               type: object
+              additionalProperties: false
+              anyOf:
+                - required: [entity_id]
+                - required: [type]
               properties:
                 entity_id:
                   type: integer
@@ -134,6 +143,7 @@ paths:
                   type: string
                 times:
                   type: integer
+                  minimum: 1
       responses:
         "200":
           description: Done. A POST also carries the envelope.
@@ -164,18 +174,19 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
-                X:
+                x:
                   type: integer
                   description: The block to work at. Give all three or none.
-                Y:
+                y:
                   type: integer
-                  description: The block to work at. Give all three or none.
-                Z:
+                z:
                   type: integer
-                  description: The block to work at. Give all three or none.
                 face:
                   type: integer
+                  minimum: 0
+                  maximum: 5
                   description: Which face of it to click, 0-5. Defaults to the one facing the bot.
                 at:
                   type: string
@@ -247,18 +258,19 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
-                X:
+                x:
                   type: integer
                   description: The block to work at. Give all three or none.
-                Y:
+                y:
                   type: integer
-                  description: The block to work at. Give all three or none.
-                Z:
+                z:
                   type: integer
-                  description: The block to work at. Give all three or none.
                 face:
                   type: integer
+                  minimum: 0
+                  maximum: 5
                   description: Which face of it to click, 0-5. Defaults to the one facing the bot.
                 at:
                   type: string
@@ -304,18 +316,19 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
-                X:
+                x:
                   type: integer
                   description: The block to work at. Give all three or none.
-                Y:
+                y:
                   type: integer
-                  description: The block to work at. Give all three or none.
-                Z:
+                z:
                   type: integer
-                  description: The block to work at. Give all three or none.
                 face:
                   type: integer
+                  minimum: 0
+                  maximum: 5
                   description: Which face of it to click, 0-5. Defaults to the one facing the bot.
                 at:
                   type: string
@@ -358,6 +371,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 item:
                   type: string
@@ -417,18 +431,19 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
-                X:
+                x:
                   type: integer
                   description: The block to work at. Give all three or none.
-                Y:
+                y:
                   type: integer
-                  description: The block to work at. Give all three or none.
-                Z:
+                z:
                   type: integer
-                  description: The block to work at. Give all three or none.
                 face:
                   type: integer
+                  minimum: 0
+                  maximum: 5
                   description: Which face of it to click, 0-5. Defaults to the one facing the bot.
                 at:
                   type: string
@@ -468,18 +483,19 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
-                X:
+                x:
                   type: integer
                   description: The block to work at. Give all three or none.
-                Y:
+                y:
                   type: integer
-                  description: The block to work at. Give all three or none.
-                Z:
+                z:
                   type: integer
-                  description: The block to work at. Give all three or none.
                 face:
                   type: integer
+                  minimum: 0
+                  maximum: 5
                   description: Which face of it to click, 0-5. Defaults to the one facing the bot.
                 at:
                   type: string
@@ -517,18 +533,19 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
-                X:
+                x:
                   type: integer
                   description: The block to work at. Give all three or none.
-                Y:
+                y:
                   type: integer
-                  description: The block to work at. Give all three or none.
-                Z:
+                z:
                   type: integer
-                  description: The block to work at. Give all three or none.
                 face:
                   type: integer
+                  minimum: 0
+                  maximum: 5
                   description: Which face of it to click, 0-5. Defaults to the one facing the bot.
                 at:
                   type: string
@@ -540,8 +557,12 @@ paths:
                   type: integer
                 button:
                   type: integer
+                  minimum: 0
+                  maximum: 1
                 mode:
                   type: integer
+                  minimum: 0
+                  maximum: 6
       responses:
         "200":
           description: Done. A POST also carries the envelope.
@@ -597,18 +618,19 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
-                X:
+                x:
                   type: integer
                   description: The block to work at. Give all three or none.
-                Y:
+                y:
                   type: integer
-                  description: The block to work at. Give all three or none.
-                Z:
+                z:
                   type: integer
-                  description: The block to work at. Give all three or none.
                 face:
                   type: integer
+                  minimum: 0
+                  maximum: 5
                   description: Which face of it to click, 0-5. Defaults to the one facing the bot.
                 at:
                   type: string
@@ -653,18 +675,19 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
-                X:
+                x:
                   type: integer
                   description: The block to work at. Give all three or none.
-                Y:
+                y:
                   type: integer
-                  description: The block to work at. Give all three or none.
-                Z:
+                z:
                   type: integer
-                  description: The block to work at. Give all three or none.
                 face:
                   type: integer
+                  minimum: 0
+                  maximum: 5
                   description: Which face of it to click, 0-5. Defaults to the one facing the bot.
                 at:
                   type: string
@@ -704,23 +727,25 @@ paths:
       tags: [Containers]
       summary: "Lays a recipe out in the open crafting table by slot, and takes the result. Preferred over /container/craft for hand-written tests: a layout is readable, a numeric recipe id is not."
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
               type: object
+              additionalProperties: false
+              required: [layout]
               properties:
-                X:
+                x:
                   type: integer
                   description: The block to work at. Give all three or none.
-                Y:
+                y:
                   type: integer
-                  description: The block to work at. Give all three or none.
-                Z:
+                z:
                   type: integer
-                  description: The block to work at. Give all three or none.
                 face:
                   type: integer
+                  minimum: 0
+                  maximum: 5
                   description: Which face of it to click, 0-5. Defaults to the one facing the bot.
                 at:
                   type: string
@@ -732,6 +757,7 @@ paths:
                   type: object
                 repeat:
                   type: integer
+                  minimum: 1
       responses:
         "200":
           description: Done. A POST also carries the envelope.
@@ -762,15 +788,18 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
-                X:
+                x:
                   type: integer
-                Y:
+                y:
                   type: integer
-                Z:
+                z:
                   type: integer
                 face:
                   type: integer
+                  minimum: 0
+                  maximum: 5
                 type:
                   type: string
       responses:
@@ -803,18 +832,19 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
-                X:
+                x:
                   type: integer
                   description: The block to work at. Give all three or none.
-                Y:
+                y:
                   type: integer
-                  description: The block to work at. Give all three or none.
-                Z:
+                z:
                   type: integer
-                  description: The block to work at. Give all three or none.
                 face:
                   type: integer
+                  minimum: 0
+                  maximum: 5
                   description: Which face of it to click, 0-5. Defaults to the one facing the bot.
                 at:
                   type: string
@@ -859,18 +889,19 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
-                X:
+                x:
                   type: integer
                   description: The block to work at. Give all three or none.
-                Y:
+                y:
                   type: integer
-                  description: The block to work at. Give all three or none.
-                Z:
+                z:
                   type: integer
-                  description: The block to work at. Give all three or none.
                 face:
                   type: integer
+                  minimum: 0
+                  maximum: 5
                   description: Which face of it to click, 0-5. Defaults to the one facing the bot.
                 at:
                   type: string
@@ -905,23 +936,27 @@ paths:
       operationId: containerTrade
       tags: [Containers]
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
               type: object
+              additionalProperties: false
+              anyOf:
+                - required: [item]
+                - required: [index]
               properties:
-                X:
+                x:
                   type: integer
                   description: The block to work at. Give all three or none.
-                Y:
+                y:
                   type: integer
-                  description: The block to work at. Give all three or none.
-                Z:
+                z:
                   type: integer
-                  description: The block to work at. Give all three or none.
                 face:
                   type: integer
+                  minimum: 0
+                  maximum: 5
                   description: Which face of it to click, 0-5. Defaults to the one facing the bot.
                 at:
                   type: string
@@ -935,6 +970,7 @@ paths:
                   type: string
                 times:
                   type: integer
+                  minimum: 1
                 raw:
                   type: boolean
                   description: Raw skips the confirmation, for a caller that wants to select a trade and inspect the window itself.
@@ -968,18 +1004,19 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
-                X:
+                x:
                   type: integer
                   description: The block to work at. Give all three or none.
-                Y:
+                y:
                   type: integer
-                  description: The block to work at. Give all three or none.
-                Z:
+                z:
                   type: integer
-                  description: The block to work at. Give all three or none.
                 face:
                   type: integer
+                  minimum: 0
+                  maximum: 5
                   description: Which face of it to click, 0-5. Defaults to the one facing the bot.
                 at:
                   type: string
@@ -1025,6 +1062,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 layout:
                   type: object
@@ -1053,17 +1091,21 @@ paths:
       operationId: dig
       tags: [Blocks]
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
               type: object
+              additionalProperties: false
+              anyOf:
+                - required: [x, y, z]
+                - required: [blocks]
               properties:
-                X:
+                x:
                   type: integer
-                Y:
+                y:
                   type: integer
-                Z:
+                z:
                   type: integer
                 blocks:
                   type: array
@@ -1072,6 +1114,7 @@ paths:
                   type: integer
                 hold_ms:
                   type: integer
+                  minimum: 0
       responses:
         "200":
           description: Done. A POST also carries the envelope.
@@ -1103,9 +1146,11 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 hold_ms:
                   type: integer
+                  minimum: 0
       responses:
         "200":
           description: Done. A POST also carries the envelope.
@@ -1136,6 +1181,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 all:
                   type: boolean
@@ -1169,18 +1215,19 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
-                X:
+                x:
                   type: integer
                   description: The block to work at. Give all three or none.
-                Y:
+                y:
                   type: integer
-                  description: The block to work at. Give all three or none.
-                Z:
+                z:
                   type: integer
-                  description: The block to work at. Give all three or none.
                 face:
                   type: integer
+                  minimum: 0
+                  maximum: 5
                   description: Which face of it to click, 0-5. Defaults to the one facing the bot.
                 at:
                   type: string
@@ -1249,11 +1296,13 @@ paths:
       operationId: equip
       tags: [Items]
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
               type: object
+              additionalProperties: false
+              required: [item]
               properties:
                 item:
                   type: string
@@ -1294,6 +1343,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 to_y:
                   type: number
@@ -1327,18 +1377,19 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
-                X:
+                x:
                   type: integer
                   description: The block to work at. Give all three or none.
-                Y:
+                y:
                   type: integer
-                  description: The block to work at. Give all three or none.
-                Z:
+                z:
                   type: integer
-                  description: The block to work at. Give all three or none.
                 face:
                   type: integer
+                  minimum: 0
+                  maximum: 5
                   description: Which face of it to click, 0-5. Defaults to the one facing the bot.
                 at:
                   type: string
@@ -1399,11 +1450,13 @@ paths:
       tags: [Items]
       summary: "Puts a named item into the bot's hand, from anywhere in the inventory."
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
               type: object
+              additionalProperties: false
+              required: [item]
               properties:
                 item:
                   type: string
@@ -1433,11 +1486,15 @@ paths:
       tags: [Combat]
       summary: Right-clicks an entity — taming, breeding, trading.
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
               type: object
+              additionalProperties: false
+              anyOf:
+                - required: [entity_id]
+                - required: [type]
               properties:
                 type:
                   type: string
@@ -1469,11 +1526,15 @@ paths:
       tags: [Combat]
       summary: "Right-clicks a specific point on an entity. Where you click matters for multi-part entities — a chest boat's chest and seat are separate hitboxes, and only one of them opens the chest."
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
               type: object
+              additionalProperties: false
+              anyOf:
+                - required: [entity_id]
+                - required: [type]
               properties:
                 entity_id:
                   type: integer
@@ -1548,13 +1609,17 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 direction:
                   type: string
+                  enum: [north, south, east, west, up, down]
                 yaw:
                   type: number
                 pitch:
                   type: number
+                  minimum: -90
+                  maximum: 90
                 x:
                   type: number
                 y:
@@ -1597,12 +1662,13 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
-                X:
+                x:
                   type: number
-                Y:
+                y:
                   type: number
-                Z:
+                z:
                   type: number
       responses:
         "200":
@@ -1659,18 +1725,19 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
-                X:
+                x:
                   type: integer
                   description: The block to work at. Give all three or none.
-                Y:
+                y:
                   type: integer
-                  description: The block to work at. Give all three or none.
-                Z:
+                z:
                   type: integer
-                  description: The block to work at. Give all three or none.
                 face:
                   type: integer
+                  minimum: 0
+                  maximum: 5
                   description: Which face of it to click, 0-5. Defaults to the one facing the bot.
                 at:
                   type: string
@@ -1716,12 +1783,13 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
-                X:
+                x:
                   type: number
-                Y:
+                y:
                   type: number
-                Z:
+                z:
                   type: number
       responses:
         "200":
@@ -1753,15 +1821,18 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
-                X:
+                x:
                   type: integer
-                Y:
+                y:
                   type: integer
-                Z:
+                z:
                   type: integer
                 face:
                   type: integer
+                  minimum: 0
+                  maximum: 5
                 verify:
                   type: boolean
                   description: "Opt-in: confirm a block actually appeared, and re-send if it didn't. Off by default because /place doubles as \"right-click this block\" for opening UIs and using items, where nothing is expected to appear and verifying would turn every such call into a two-second failure."
@@ -1852,18 +1923,19 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
-                X:
+                x:
                   type: integer
                   description: The block to work at. Give all three or none.
-                Y:
+                y:
                   type: integer
-                  description: The block to work at. Give all three or none.
-                Z:
+                z:
                   type: integer
-                  description: The block to work at. Give all three or none.
                 face:
                   type: integer
+                  minimum: 0
+                  maximum: 5
                   description: Which face of it to click, 0-5. Defaults to the one facing the bot.
                 at:
                   type: string
@@ -1909,17 +1981,22 @@ paths:
         Draw time is the power control: the curve is (t²+2t)/3, so half a second
         gives roughly 40% power, not 50%.
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
               type: object
+              additionalProperties: false
+              anyOf:
+                - required: [block]
+                - required: [x, y, z]
+                - required: [type]
               properties:
-                X:
+                x:
                   type: number
-                Y:
+                y:
                   type: number
-                Z:
+                z:
                   type: number
                 block:
                   type: object
@@ -1927,6 +2004,7 @@ paths:
                   type: string
                 draw_ms:
                   type: integer
+                  minimum: 0
                 item:
                   type: string
                   description: The bow to draw. Optional, and held first when given.
@@ -1955,14 +2033,18 @@ paths:
       operationId: slot
       tags: [Items]
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
               type: object
+              additionalProperties: false
+              required: [slot]
               properties:
                 slot:
                   type: integer
+                  minimum: 0
+                  maximum: 8
       responses:
         "200":
           description: Done. A POST also carries the envelope.
@@ -1993,18 +2075,19 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
-                X:
+                x:
                   type: integer
                   description: The block to work at. Give all three or none.
-                Y:
+                y:
                   type: integer
-                  description: The block to work at. Give all three or none.
-                Z:
+                z:
                   type: integer
-                  description: The block to work at. Give all three or none.
                 face:
                   type: integer
+                  minimum: 0
+                  maximum: 5
                   description: Which face of it to click, 0-5. Defaults to the one facing the bot.
                 at:
                   type: string
@@ -2048,18 +2131,19 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
-                X:
+                x:
                   type: integer
                   description: The block to work at. Give all three or none.
-                Y:
+                y:
                   type: integer
-                  description: The block to work at. Give all three or none.
-                Z:
+                z:
                   type: integer
-                  description: The block to work at. Give all three or none.
                 face:
                   type: integer
+                  minimum: 0
+                  maximum: 5
                   description: Which face of it to click, 0-5. Defaults to the one facing the bot.
                 at:
                   type: string
@@ -2104,9 +2188,11 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 ms:
                   type: integer
+                  minimum: 0
       responses:
         "200":
           description: Done. A POST also carries the envelope.
@@ -2244,12 +2330,13 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
-                X:
+                x:
                   type: number
-                Y:
+                y:
                   type: number
-                Z:
+                z:
                   type: number
                 sprint:
                   type: boolean

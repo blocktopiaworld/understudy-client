@@ -13,6 +13,11 @@ understudy-client -addr localhost:25565 -username Probe -hold 0 -control 8181
 
 There is **no authentication**. Bind it to loopback.
 
+Field names are matched case-insensitively, so `{"x": 10}` and `{"X": 10}` are
+the same request. The captured examples below show whichever spelling the call
+that produced them used; the OpenAPI document names the lowercase one, and a
+caller that follows it is always accepted.
+
 Prefer a reference to a guide? The same surface is published as
 [OpenAPI](../reference/), generated from the server's own route table — so the
 request shapes there are the ones the server accepts, by construction. The

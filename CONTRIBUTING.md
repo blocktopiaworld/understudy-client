@@ -76,6 +76,27 @@ It is derived rather than written because the prose reference was written by
 reading the handlers and four of its claims were wrong. A hand-maintained
 schema would drift the same way and be believed harder.
 
+What the Go type cannot say is declared on the field, next to the code that
+enforces it — a bound written in the generator and checked three files away is
+a bound that will disagree with itself:
+
+```go
+Face *int32 `json:"face" openapi:"min=0,max=5"`
+Item string `json:"item" openapi:"required"`
+Direction string `json:"direction" openapi:"enum=north|south|east|west|up|down"`
+```
+
+`required` means the handler refuses without it, not merely that most callers
+send it. For a verb that takes one form or another — an entity id or a type, a
+block or a point — put the choice in the doc comment instead, one line per
+form:
+
+```go
+// openapi:anyOf entity_id
+// openapi:anyOf type
+func (s *Server) attack(...)
+```
+
 **Turning the site on is a one-time setting**, and it needs the repository to be
 public — GitHub Pages is not available for private repositories on the free
 plan. Settings → Pages → Source: *Deploy from a branch*, branch `main`, folder

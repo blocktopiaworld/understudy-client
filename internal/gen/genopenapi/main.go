@@ -47,6 +47,9 @@ type field struct {
 	items    string // element type, for arrays
 	optional bool   // a pointer, so absence is distinguishable from zero
 	comment  string
+	required bool
+	min, max string // inclusive bounds, empty when unbounded
+	enum     []string
 }
 
 type route struct {
@@ -57,6 +60,10 @@ type route struct {
 	desc    string
 	body    []field
 	query   []field
+	// anyOf names the alternative forms a handler accepts, one group per
+	// element. Several verbs take a target as an id or a type or a point, and
+	// refuse when given none — which no per-field "required" can express.
+	anyOf [][]string
 }
 
 func main() {
@@ -104,7 +111,15 @@ func main() {
 var (
 	reHandle = regexp.MustCompile(`^"(GET|POST) ([^"]+)"$`)
 	reJSON   = regexp.MustCompile(`json:"([^",]+)`)
-	reQuery  = regexp.MustCompile(`Query\(\)\.(?:Get|Has)\("([a-z_]+)"\)`)
+
+	// openapi:"..." carries what the Go type cannot: whether a field is
+	// required, the bounds the handler enforces, and the values it accepts.
+	//
+	// Declared on the field rather than in this generator so the constraint
+	// sits beside the code that enforces it. A bound written here and checked
+	// three files away is a bound that will disagree with itself.
+	reSpec  = regexp.MustCompile(`openapi:"([^"]*)"`)
+	reQuery = regexp.MustCompile(`Query\(\)\.(?:Get|Has)\("([a-z_]+)"\)`)
 )
 
 // collect walks the mux registrations and pairs each with its handler.
@@ -133,7 +148,7 @@ func collect(file *ast.File, handlers map[string]*ast.FuncDecl, types map[string
 		}
 		r := route{method: m[1], path: m[2], handler: name}
 		if fn, ok := handlers[name]; ok {
-			r.summary, r.desc = docOf(fn)
+			r.summary, r.desc, r.anyOf = docOf(fn)
 			r.body, r.query = fieldsOf(fn, types)
 		}
 		out = append(out, r)
@@ -159,14 +174,29 @@ func handlerName(arg ast.Expr) string {
 
 // docOf splits a handler's doc comment into a first line and the rest, which is
 // how OpenAPI wants summary and description.
-func docOf(fn *ast.FuncDecl) (summary, description string) {
+func docOf(fn *ast.FuncDecl) (summary, description string, anyOf [][]string) {
 	if fn.Doc == nil {
-		return "", ""
+		return "", "", nil
 	}
 	var lines []string
 	for _, c := range fn.Doc.List {
 		t := strings.TrimPrefix(c.Text, "//")
-		lines = append(lines, strings.TrimPrefix(t, " "))
+		t = strings.TrimPrefix(t, " ")
+		// A directive rather than prose: "openapi:anyOf entity_id, type" says
+		// the handler takes one form or the other and refuses without either.
+		if rest, ok := strings.CutPrefix(t, "openapi:anyOf "); ok {
+			var group []string
+			for _, name := range strings.Split(rest, ",") {
+				if n := strings.TrimSpace(name); n != "" {
+					group = append(group, n)
+				}
+			}
+			if len(group) > 0 {
+				anyOf = append(anyOf, group)
+			}
+			continue
+		}
+		lines = append(lines, t)
 	}
 	// Drop the "name does X" convention from the first line: the path is
 	// already the subject, and "containerTrade trades" reads as a stutter.
@@ -184,9 +214,10 @@ func docOf(fn *ast.FuncDecl) (summary, description string) {
 		}
 	}
 	if blank == -1 {
-		return strings.Join(lines, " "), ""
+		return strings.Join(lines, " "), "", anyOf
 	}
-	return strings.Join(lines[:blank], " "), strings.TrimSpace(strings.Join(lines[blank+1:], "\n"))
+	return strings.Join(lines[:blank], " "),
+		strings.TrimSpace(strings.Join(lines[blank+1:], "\n")), anyOf
 }
 
 // fieldsOf reads a handler's input struct, following a named type and
@@ -266,12 +297,16 @@ func structFields(expr ast.Expr, types map[string]*ast.StructType) []field {
 	var out []field
 	for _, f := range st.Fields.List {
 		kind, items, optional := openAPIType(f.Type)
-		jsonName := ""
+		jsonName, spec := "", ""
 		if f.Tag != nil {
 			if m := reJSON.FindStringSubmatch(f.Tag.Value); m != nil {
 				jsonName = m[1]
 			}
+			if m := reSpec.FindStringSubmatch(f.Tag.Value); m != nil {
+				spec = m[1]
+			}
 		}
+		required, min, max, enum := parseSpec(spec)
 		if len(f.Names) == 0 {
 			// Embedded: flatten it, which is what encoding/json does.
 			if ident, ok := f.Type.(*ast.Ident); ok {
@@ -300,10 +335,28 @@ func structFields(expr ast.Expr, types map[string]*ast.StructType) []field {
 			out = append(out, field{
 				name: name, kind: kind, items: items,
 				optional: optional, comment: comment,
+				required: required, min: min, max: max, enum: enum,
 			})
 		}
 	}
 	return out
+}
+
+// parseSpec reads an openapi:"required,min=0,max=5,enum=a|b" tag.
+func parseSpec(spec string) (required bool, min, max string, enum []string) {
+	for _, part := range strings.Split(spec, ",") {
+		switch {
+		case part == "required":
+			required = true
+		case strings.HasPrefix(part, "min="):
+			min = strings.TrimPrefix(part, "min=")
+		case strings.HasPrefix(part, "max="):
+			max = strings.TrimPrefix(part, "max=")
+		case strings.HasPrefix(part, "enum="):
+			enum = strings.Split(strings.TrimPrefix(part, "enum="), "|")
+		}
+	}
+	return required, min, max, enum
 }
 
 func openAPIType(expr ast.Expr) (kind, items string, optional bool) {
@@ -365,7 +418,7 @@ func renderOperation(b *strings.Builder, r route) {
 		}
 	}
 	renderQuery(b, r.query)
-	renderBody(b, r.body)
+	renderBody(b, r.body, r.anyOf)
 	b.WriteString(responses)
 }
 
@@ -383,23 +436,58 @@ func renderQuery(b *strings.Builder, query []field) {
 	}
 }
 
-func renderBody(b *strings.Builder, body []field) {
+func renderBody(b *strings.Builder, body []field, anyOf [][]string) {
 	if len(body) == 0 {
 		return
 	}
-	b.WriteString("      requestBody:\n        required: false\n")
+	var required []string
+	for _, f := range body {
+		if f.required {
+			required = append(required, f.name)
+		}
+	}
+	b.WriteString("      requestBody:\n")
+	// A body is mandatory when a field is required outright, and when the verb
+	// takes one form or another and refuses given neither.
+	fmt.Fprintf(b, "        required: %t\n", len(required) > 0 || len(anyOf) > 0)
 	b.WriteString("        content:\n          application/json:\n")
 	b.WriteString("            schema:\n              type: object\n")
+	// The server decodes with DisallowUnknownFields, so a typo in a field name
+	// is a 400 rather than a silently skipped argument. Saying so here is what
+	// lets a generated client refuse it before the request goes out.
+	b.WriteString("              additionalProperties: false\n")
+	if len(required) > 0 {
+		fmt.Fprintf(b, "              required: [%s]\n", strings.Join(required, ", "))
+	}
+	if len(anyOf) > 0 {
+		b.WriteString("              anyOf:\n")
+		for _, group := range anyOf {
+			fmt.Fprintf(b, "                - required: [%s]\n", strings.Join(group, ", "))
+		}
+	}
 	b.WriteString("              properties:\n")
 	for _, f := range body {
-		fmt.Fprintf(b, "                %s:\n", f.name)
-		fmt.Fprintf(b, "                  type: %s\n", f.kind)
-		if f.kind == "array" && f.items != "" {
-			fmt.Fprintf(b, "                  items: { type: %s }\n", f.items)
-		}
-		if f.comment != "" {
-			fmt.Fprintf(b, "                  description: %s\n", yamlString(f.comment))
-		}
+		renderField(b, f)
+	}
+}
+
+func renderField(b *strings.Builder, f field) {
+	fmt.Fprintf(b, "                %s:\n", f.name)
+	fmt.Fprintf(b, "                  type: %s\n", f.kind)
+	if f.kind == "array" && f.items != "" {
+		fmt.Fprintf(b, "                  items: { type: %s }\n", f.items)
+	}
+	if f.min != "" {
+		fmt.Fprintf(b, "                  minimum: %s\n", f.min)
+	}
+	if f.max != "" {
+		fmt.Fprintf(b, "                  maximum: %s\n", f.max)
+	}
+	if len(f.enum) > 0 {
+		fmt.Fprintf(b, "                  enum: [%s]\n", strings.Join(f.enum, ", "))
+	}
+	if f.comment != "" {
+		fmt.Fprintf(b, "                  description: %s\n", yamlString(f.comment))
 	}
 }
 
@@ -460,6 +548,10 @@ info:
     any language can drive it.
 
     There is **no authentication**. Bind it to loopback.
+
+    Field names here are the canonical spelling. The server matches them
+    case-insensitively, so ` + "`x`" + ` and ` + "`X`" + ` both work — but this document names
+    one of the two, and a client that follows it is always accepted.
 
     Every endpoint reports what actually happened rather than what was asked
     for. The server accepts and silently ignores a great deal — a click on a
