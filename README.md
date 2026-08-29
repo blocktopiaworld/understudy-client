@@ -1,5 +1,8 @@
 # understudy-client
 
+*Born from needing reliable automated testing at
+[blocktopia.world](https://blocktopia.world).*
+
 A headless Minecraft client, written in Go, that speaks the Java Edition wire
 protocol directly — no game, no rendering, no mod loader. It connects as an
 ordinary offline-mode player and can mine, place, craft, eat, shoot, fall and
@@ -191,17 +194,6 @@ copyright notices, and say if you significantly changed a file.
 
 It does not grant rights to the Blocktopia name or marks (section 6). Build what
 you like on this; just do not brand it as ours.
-
-## Who builds this
-
-understudy-client is built by the team behind **[Blocktopia](https://blocktopia.world)**, a
-platform for Minecraft server communities — achievements, quests, profiles and
-the infrastructure around them. We wrote this because we needed to test our own
-server-side work by actually playing the game, and it turned out to be worth
-publishing on its own.
-
-If you run a Minecraft server, [blocktopia.world](https://blocktopia.world) is
-where that work lives.
 
 ## Credits
 
