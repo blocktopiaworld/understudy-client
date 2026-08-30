@@ -226,3 +226,31 @@ func TestStateIDRoundTrip(t *testing.T) {
 		t.Errorf("StateID() = %d, want 42", got)
 	}
 }
+
+// An id carrying a block state or components matches the item it names. The
+// framework passes such ids around legitimately — a water bottle can only be
+// given as minecraft:potion[potion_contents=...] — and answering zero for a
+// stack the player is holding is a silently wrong answer.
+func TestMatchesIgnoresAStateOrComponents(t *testing.T) {
+	wheat := ItemStack{Name: "minecraft:wheat", Count: 12}
+	potion := ItemStack{Name: "minecraft:potion", Count: 3}
+
+	for _, tc := range []struct {
+		stack ItemStack
+		name  string
+	}{
+		{wheat, "minecraft:wheat[age=7]"},
+		{wheat, "wheat[age=7]"},
+		{potion, `minecraft:potion[potion_contents={potion:"minecraft:water"}]`},
+	} {
+		if exact, fuzzy := Matches(tc.stack, tc.name); !exact && !fuzzy {
+			t.Errorf("Matches(%s, %q) = no match, want the item it names",
+				tc.stack.Name, tc.name)
+		}
+	}
+
+	// And it still does not match something else entirely.
+	if exact, fuzzy := Matches(wheat, "minecraft:carrot[age=7]"); exact || fuzzy {
+		t.Error("a state made wheat match a carrot")
+	}
+}

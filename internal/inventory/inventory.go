@@ -200,6 +200,10 @@ func (inv *Inventory) ResetPickups() {
 // form is deliberately loose — it is a convenience — so callers that need
 // certainty should pass the full name and check exact.
 func Matches(stack ItemStack, name string) (exact, fuzzy bool) {
+	// A block state or a component list is not something this client can match
+	// on — it knows an item by its id — so the qualifier is dropped rather than
+	// allowed to match nothing at all.
+	name = protocol.BaseID(name)
 	want := protocol.Namespaced(name)
 	if stack.Name == want {
 		return true, true
@@ -254,7 +258,10 @@ func (inv *Inventory) FindInStorage(name string) (ItemStack, bool) {
 // Counting is deliberately exact-match only: a fuzzy total would silently add
 // dark_oak_planks to an oak_planks count.
 func (inv *Inventory) Count(name string, include func(ItemStack) bool) int32 {
-	want := protocol.Namespaced(name)
+	// Exact on the id, and the id is what a qualifier is not part of. Matches
+	// drops one for the same reason; counting has to agree with it, or asking
+	// "how many" and asking "hold one" answer differently about the same stack.
+	want := protocol.Namespaced(protocol.BaseID(name))
 	var total int32
 	for _, it := range inv.Sorted() {
 		if it.Name == want && include(it) {

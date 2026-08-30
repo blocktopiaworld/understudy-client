@@ -301,7 +301,9 @@ func (v *Version) ItemID(name string) (int32, bool) {
 			}
 		}
 	})
-	id, ok := v.itemIDs[Namespaced(name)]
+	// A qualifier names a variant of an item, not a different item: a water
+	// bottle is still minecraft:potion and stacks like one.
+	id, ok := v.itemIDs[Namespaced(BaseID(name))]
 	return id, ok
 }
 

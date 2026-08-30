@@ -6,6 +6,13 @@ Notable changes. Dates are when the work landed, not when a tag was cut.
 
 ### Fixed
 
+- An item id carrying a block state or a component list matched nothing. A bot
+  holding twelve wheat reported none of it when asked for `wheat[age=7]`, and
+  refused to hold a water bottle named the only way a command can name one. The
+  qualifier is now dropped for matching, counting and stack size alike — those
+  three had to agree, or "how many" and "hold one" answer differently about the
+  same stack. `GET /inventory?count=` reports `matched_as` and
+  `ignored_qualifier` when it drops one.
 - A honey bottle was never drunk. Consuming held the use for a fixed 32 ticks,
   which is how long almost everything takes to eat — but a honey bottle is a
   drink and takes 40, so the use was released four ticks early and nothing

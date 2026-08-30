@@ -155,7 +155,7 @@ func (s *Server) inventoryCount(w http.ResponseWriter, r *http.Request, name str
 		want = int32(v)
 	}
 	slots, fits := s.bot.SlotsNeeded(name, want)
-	s.writeJSON(w, http.StatusOK, body{
+	out := body{
 		"item":         name,
 		"total":        s.bot.CountItem(name),
 		"storage_only": s.bot.CountItemStorage(name),
@@ -164,7 +164,16 @@ func (s *Server) inventoryCount(w http.ResponseWriter, r *http.Request, name str
 		"want":         want,
 		"slots_needed": slots,
 		"fits":         fits,
-	})
+	}
+	// A block state or a component list is not something this client matches
+	// on, so it answers for the id and says which part it ignored. Counting
+	// every potion when the caller asked for a water bottle is a defensible
+	// answer; giving it without saying so is not.
+	if q := protocol.Qualifier(name); q != "" {
+		out["matched_as"] = protocol.BaseID(name)
+		out["ignored_qualifier"] = q
+	}
+	s.writeJSON(w, http.StatusOK, out)
 }
 
 // handleBlock reports the block the bot believes is at a coordinate:

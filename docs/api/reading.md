@@ -91,7 +91,13 @@ with nothing anywhere saying so.
 | `count` | string | no | ask about one item instead of listing everything |
 | `want` | int | no | with `count`, ask whether that many would fit |
 
-Item names may be bare (`bread`) or namespaced (`minecraft:bread`).
+Item names may be bare (`bread`) or namespaced (`minecraft:bread`), and may
+carry a block state or a component list — `wheat[age=7]`,
+`potion[potion_contents={potion:"minecraft:water"}]`. This client knows an item
+by its id, so the qualifier is dropped and the answer covers the id: every
+potion, not only the water ones. When that happens the response says so, with
+`matched_as` and `ignored_qualifier`, because giving that answer without saying
+it is how a caller comes to trust a number that does not mean what they think.
 
 ### Everything carried
 
