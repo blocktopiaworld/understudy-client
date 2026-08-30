@@ -183,6 +183,8 @@ curl 'localhost:8181/inventory?count=minecraft:stone'
 | `stack_size` | int | the item's own stack limit |
 | `slots_needed` | int | slots `want` would occupy |
 | `fits` | bool | whether `want` would physically fit |
+| `matched_as` | string | the id actually counted, when a qualifier was dropped |
+| `ignored_qualifier` | string | the part that was dropped |
 
 ```json
 {
@@ -196,6 +198,32 @@ curl 'localhost:8181/inventory?count=minecraft:stone'
   "want": 1
 }
 ```
+
+### An id carrying a state or components
+
+```sh
+curl 'localhost:8181/inventory?count=minecraft:wheat%5Bage%3D7%5D'
+```
+
+```json
+{
+  "fits": true,
+  "free_slots": 35,
+  "ignored_qualifier": "age=7",
+  "item": "minecraft:wheat[age=7]",
+  "matched_as": "minecraft:wheat",
+  "slots_needed": 1,
+  "stack_size": 64,
+  "storage_only": 12,
+  "total": 12,
+  "want": 1
+}
+```
+
+The last two fields are the honest part. Twelve wheat is the right answer here,
+but ask for a water bottle and the same drop counts every potion — so the answer
+says which question it actually answered. Match on `matched_as` if it matters,
+rather than on the name you sent.
 
 ### Would this many fit
 
