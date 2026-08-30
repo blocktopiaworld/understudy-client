@@ -601,8 +601,12 @@ func (s *Server) swing(_ context.Context, _ struct{}) (body, error) {
 	return nil, s.bot.Swing()
 }
 
-func (s *Server) use(ctx context.Context, _ struct{}) (body, error) {
-	return nil, s.bot.UseItem(ctx)
+func (s *Server) use(ctx context.Context, in struct {
+	// How long to hold the right-click before releasing it, which is what a
+	// bow, a shield or a spyglass needs. Zero is a tap.
+	HoldMS int `json:"hold_ms" openapi:"min=0"`
+}) (body, error) {
+	return nil, s.bot.UseItemFor(ctx, time.Duration(in.HoldMS)*time.Millisecond)
 }
 
 // digLookingAt mines whatever the crosshair is on.

@@ -797,3 +797,70 @@ func TestSprintingIsRefusedWhenTooHungry(t *testing.T) {
 		t.Errorf("error = %q, want it to name the hunger", err)
 	}
 }
+
+// Eating is 32 ticks for almost everything and a honey bottle is 40, so a hold
+// sized for food released the use four ticks early and the bottle was never
+// drunk. Watching the hand is the same answer for every item, including
+// whichever one Mojang adds next.
+func TestConsumingWaitsForTheHandRatherThanAClock(t *testing.T) {
+	t.Run("returns as soon as the stack moves", func(t *testing.T) {
+		c, _ := settled(t)
+		slot := SlotHotbarStart
+		c.inv.SetSlot(slot, ItemStack{Slot: slot, Name: "minecraft:bread", Count: 4})
+		before, _ := c.HeldItem()
+
+		// The server takes the item a moment in.
+		go func() {
+			time.Sleep(6 * TickRate)
+			c.inv.SetSlot(slot, ItemStack{Slot: slot, Name: "minecraft:bread", Count: 3})
+		}()
+
+		began := time.Now()
+		if err := c.awaitConsumed(context.Background(), before, true); err != nil {
+			t.Fatalf("awaitConsumed: %v", err)
+		}
+		if waited := time.Since(began); waited > ConsumeDuration {
+			t.Errorf("waited %v for a stack that moved after %v", waited, 6*TickRate)
+		}
+	})
+
+	t.Run("waits past the food duration for a slower drink", func(t *testing.T) {
+		c, _ := settled(t)
+		slot := SlotHotbarStart
+		c.inv.SetSlot(slot, ItemStack{Slot: slot, Name: "minecraft:honey_bottle", Count: 2})
+		before, _ := c.HeldItem()
+
+		// A honey bottle is 40 ticks, past the 32 a fixed food hold allows.
+		go func() {
+			time.Sleep(40 * TickRate)
+			c.inv.SetSlot(slot, ItemStack{Slot: slot, Name: "minecraft:honey_bottle", Count: 1})
+		}()
+
+		began := time.Now()
+		if err := c.awaitConsumed(context.Background(), before, true); err != nil {
+			t.Fatalf("awaitConsumed: %v", err)
+		}
+		waited := time.Since(began)
+		if waited < 40*TickRate {
+			t.Errorf("returned after %v, before the bottle could be drunk", waited)
+		}
+		if waited > consumeLimit {
+			t.Errorf("waited %v, past the limit", waited)
+		}
+	})
+
+	t.Run("gives up so a refusal is still reported", func(t *testing.T) {
+		c, _ := settled(t)
+		slot := SlotHotbarStart
+		c.inv.SetSlot(slot, ItemStack{Slot: slot, Name: "minecraft:bread", Count: 4})
+		before, _ := c.HeldItem()
+
+		began := time.Now()
+		if err := c.awaitConsumed(context.Background(), before, true); err != nil {
+			t.Fatalf("awaitConsumed: %v", err)
+		}
+		if waited := time.Since(began); waited < consumeLimit {
+			t.Errorf("gave up after %v, want it to wait out %v first", waited, consumeLimit)
+		}
+	})
+}

@@ -204,6 +204,11 @@ Eats or drinks, and waits for the effect.
 The deltas are there so a test can assert on the change rather than on the
 absolute, which is what you almost always mean.
 
+The use is held until the item actually leaves the hand rather than for a fixed
+time. Almost everything eats in 32 ticks and a honey bottle drinks in 40, so a
+fixed hold sized for food released four ticks early and the bottle was never
+drunk.
+
 **Ordinary food is refused at full hunger** — that is vanilla, not this client
 — and the error says so rather than timing out. A golden apple is always
 edible, which is why the sample above gains health and no food. If you need an

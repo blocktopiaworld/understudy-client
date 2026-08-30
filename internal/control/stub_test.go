@@ -321,6 +321,11 @@ func (b *stubBot) PlaceBlockVerified(ctx context.Context, x, y, z, face int32) e
 	b.lastFace = face
 	return b.err
 }
+func (b *stubBot) UseItemFor(ctx context.Context, hold time.Duration) error {
+	b.record("UseItemFor")
+	return b.err
+}
+
 func (b *stubBot) UseItem(ctx context.Context) error { b.record("UseItem"); return b.err }
 func (b *stubBot) Consume(ctx context.Context) error { b.record("Consume"); return b.err }
 func (b *stubBot) ConsumeItem(ctx context.Context, name string) (understudy.ItemStack, error) {

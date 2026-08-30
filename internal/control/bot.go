@@ -100,6 +100,7 @@ type Bot interface {
 	PlaceBlock(ctx context.Context, x, y, z, face int32) error
 	PlaceBlockVerified(ctx context.Context, x, y, z, face int32) error
 	UseItem(ctx context.Context) error
+	UseItemFor(ctx context.Context, hold time.Duration) error
 	Consume(ctx context.Context) error
 	ConsumeItem(ctx context.Context, name string) (understudy.ItemStack, error)
 	CraftIn2x2(ctx context.Context, layout map[int]string) (understudy.ItemStack, error)

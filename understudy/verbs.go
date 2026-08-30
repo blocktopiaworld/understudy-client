@@ -91,6 +91,35 @@ const consumeMargin = 4 * TickRate
 // judged. Without it a successful eat looks like a refused one.
 const consumeSettle = 8 * TickRate
 
+// consumeLimit bounds the wait for the stack to move. Longer than any vanilla
+// use — the slowest is a honey bottle at 40 ticks — so reaching it means the
+// server refused rather than that the wait was short.
+const consumeLimit = 60 * TickRate
+
+// awaitConsumed holds the use until the held stack changes, or until it is
+// clear nothing is going to happen.
+func (c *Client) awaitConsumed(ctx context.Context, before ItemStack, hadItem bool) error {
+	if !hadItem {
+		return wait(ctx, ConsumeDuration+consumeMargin)
+	}
+	deadline := time.After(consumeLimit)
+	ticker := time.NewTicker(TickRate)
+	defer ticker.Stop()
+	for {
+		if after, held := c.HeldItem(); !held || after.Name != before.Name ||
+			after.Count < before.Count {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-deadline:
+			return nil // the caller reports it, with the food level that explains it
+		case <-ticker.C:
+		}
+	}
+}
+
 // Consume eats or drinks the held item.
 //
 // This is a *held* action, not an instant one. Sending use_item alone starts
@@ -110,10 +139,19 @@ func (c *Client) Consume(ctx context.Context) error {
 	if err := c.UseItem(ctx); err != nil {
 		return err
 	}
-	if err := wait(ctx, ConsumeDuration+consumeMargin); err != nil {
+	// Hold until the stack moves, rather than for a fixed time.
+	//
+	// Eating is 32 ticks for almost everything, and a honey bottle is 40 — so a
+	// fixed hold sized for food releases the use four ticks early and the bottle
+	// is never drunk. There is no table of per-item durations here and adding
+	// one would be a table to keep in step with Mojang; watching the hand is
+	// the same answer for every item, including the next one they add.
+	if err := c.awaitConsumed(ctx, before, hadItem); err != nil {
 		return err
 	}
-	// Release the use, which is what commits it.
+	// Release the use. Already committed when the wait above saw the stack
+	// move, and required when it did not, so that a refused eat does not leave
+	// the bot holding the button.
 	if err := c.releaseUse(ctx); err != nil {
 		return err
 	}

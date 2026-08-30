@@ -2,6 +2,7 @@ package understudy
 
 import (
 	"context"
+	"time"
 
 	"github.com/blocktopiaworld/understudy-client/protocol"
 )
@@ -90,6 +91,25 @@ func BlockOffsetByFace(x, y, z, face int32) [3]int32 {
 	default:
 		return [3]int32{x + 1, y, z}
 	}
+}
+
+// UseItemFor holds a right-click down for a duration and then releases it,
+// which is what a bow, a shield or a spyglass needs. A zero hold is a tap.
+//
+// The release is unconditional: a cancelled context must still let go, or the
+// bot keeps the button held for the rest of the session.
+func (c *Client) UseItemFor(ctx context.Context, hold time.Duration) error {
+	if err := c.UseItem(ctx); err != nil {
+		return err
+	}
+	if hold <= 0 {
+		return nil
+	}
+	waitErr := wait(ctx, hold)
+	if err := c.releaseUse(ctx); err != nil {
+		return err
+	}
+	return waitErr
 }
 
 // UseItem right-clicks with the held item without targeting a block — eating,

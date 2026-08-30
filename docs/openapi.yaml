@@ -2326,6 +2326,18 @@ paths:
     post:
       operationId: use
       tags: [Blocks]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                hold_ms:
+                  type: integer
+                  minimum: 0
+                  description: How long to hold the right-click before releasing it, which is what a bow, a shield or a spyglass needs. Zero is a tap.
       responses:
         "200":
           description: Done. A POST also carries the envelope.

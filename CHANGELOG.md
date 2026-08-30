@@ -4,6 +4,19 @@ Notable changes. Dates are when the work landed, not when a tag was cut.
 
 ## Unreleased
 
+### Fixed
+
+- A honey bottle was never drunk. Consuming held the use for a fixed 32 ticks,
+  which is how long almost everything takes to eat — but a honey bottle is a
+  drink and takes 40, so the use was released four ticks early and nothing
+  happened. Golden apples and milk buckets are both 32 and worked fine, which
+  is what made it look like the bottle was being refused rather than cut short.
+  The hold now lasts until the item leaves the hand, which is the same answer
+  for every item including whichever one is added next.
+- `POST /use` ignored `hold_ms` while the guide documented it. It now holds the
+  right-click for that long and releases it, which is what a bow, a shield or a
+  spyglass needs.
+
 ### Added
 
 - A refusal says which kind of "no" it is. `409` now carries `reason`, a short
