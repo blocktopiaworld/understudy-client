@@ -12,6 +12,12 @@ Every response below was captured from a live 26.2 server.
 
 Breaks one block, or a list of them, re-aiming for each.
 
+Named for the packet rather than the activity. The wire message is
+`player_digging`, and dropping an item and releasing a bow ride on it too, so
+"mine" would be the wrong word for the family — throwing a stack on the ground
+is not mining. The gameplay-level name belongs a layer up: understudy calls it
+`player.mine(pos)`, and this is what that sends.
+
 **Parameters** — give either `X`,`Y`,`Z` or `blocks`.
 
 | name | type | required | default | meaning |
