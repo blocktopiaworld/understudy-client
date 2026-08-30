@@ -142,6 +142,21 @@ func waitFor(t *testing.T, timeout time.Duration, what string, cond func() bool)
 	t.Fatalf("timed out after %v waiting for %s", timeout, what)
 }
 
+// recorded gives the fake server's reader a moment to catch up with packets the
+// client has already written, for assertions that count what it sent.
+//
+// It reports nothing and fails nothing: the assertion that follows is the one
+// that knows what it wanted and how to say so.
+func recorded(cond func() bool) {
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+}
+
 // teleportPacket builds a server teleport, as the play state would send one.
 func teleportPacket(v *protocol.Version, id int32, x, y, z float64) []byte {
 	return protocol.NewWriter(v.Packets.CBPlayPosition).
@@ -305,6 +320,19 @@ func TestBlockActionsWaitForTheTeleportToSettle(t *testing.T) {
 		t.Fatalf("StartDig: %v", err)
 	}
 	elapsed := time.Since(start)
+
+	// Both counts below race the fake server's reader: StartDig returns once the
+	// packets are on the socket, which is before the other end has read and
+	// recorded them. So give the recorder a moment to catch up before reading
+	// its slice — this waits on the test's own bookkeeping, never on the client,
+	// and the assertions still fire with their own messages if nothing arrives.
+	// Sampling it the instant StartDig returned failed about one run in five,
+	// always on the dig: it is the last thing written, so it is the one still in
+	// flight.
+	recorded(func() bool {
+		return s.countOf(c.v.Packets.SBPlayPositionLook) > before &&
+			s.countOf(c.v.Packets.SBPlayBlockDig) > 0
+	})
 
 	if after := s.countOf(c.v.Packets.SBPlayPositionLook); after <= before {
 		t.Errorf("StartDig sent no position packet (%d then %d), want the gate to answer the "+
